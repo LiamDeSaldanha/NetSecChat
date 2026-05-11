@@ -9,6 +9,7 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 # Update the requriements.txt
+**Do when you pip install something**
 ```
 pip freeze > requirements.txt
 git add requirements.txt
