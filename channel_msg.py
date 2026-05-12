@@ -1,7 +1,7 @@
 import msgpack # Install with: pip install msgpack
 import socket
 import random
-from classes import connection
+#from classes import connection
 # = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 #sock.connect(('csc4026z.link', 51825))
 #sock.send(msgpack.packb({'session': 1, 'request_type':3, 'request_handle': random.randint(0, 2**32 - 1)}))
@@ -11,11 +11,9 @@ from classes import connection
 """CHANNEL_CREATE """
 def CHANNEL_CREATE(channel_name,description=""):
     data= {
-        "request_type":4,               # request_type u8
-                 # u32
-       
-        "channel":channel_name,    # s[20]
-        "description":description      # s[100]
+        "request_type":4,
+        "channel":channel_name,    
+        "description":description      
     }
     
     data = connection.send(data)

@@ -4,13 +4,14 @@ import random
 from channel_msg import *
 from user_messages import *
 from session_msg import *
-from classes import connection
+#from classes import connection
 from classes import *
+#connection = Connection('csc4026z.link', 51825)    
 
-server = Server() 
+server = Manager('csc4026z.link',51825) 
 # might have done a oopsie with making connection a singleton    
     
-user = User()
+
 
 
 def main():
@@ -33,8 +34,8 @@ def main():
     keyboard = input(menu_text)
     if keyboard == "1":
     #connect
-        _,_,username = connection.connect()
-        user.setUsername(username)
+        _,_,username = server.connect()
+        server.setUser(username)
         #sock.send(CONNECT_REQUEST()))
         #data, addr = sock.recvfrom(4096)
         #data = msgpack.unpackb(data)
@@ -48,7 +49,7 @@ def main():
             
             new_username = input(f"Enter you new username: \n")
             
-            data=connection.send(SET_USERNAME_REQUEST(new_username))
+            data=server.send(SET_USERNAME_REQUEST(new_username))
             
             if data['response_type'] != 20:
                 old_username, new_username = SET_USERNAME_RESPONSE(data)
@@ -59,7 +60,7 @@ def main():
                 print(f"An error has ocurred: {error}")
 
         if keyboard == "4":
-            data =connection.send(USER_LIST())
+            data =server.send(USER_LIST())
             
             if data['response_type'] != 20:
                 user_list, next_page_bool = USER_LIST_RESPONSE(data)
@@ -69,7 +70,7 @@ def main():
                 print(f"An error has ocurred: {error}")
 
         if keyboard == "5":
-            data = connection.send(WHOAMI_REQUEST())
+            data = server.send(WHOAMI_REQUEST())
             
             if data['response_type'] != 20:
                 username_query = WHOAMI_RESPONSE(data)
@@ -80,7 +81,7 @@ def main():
             
         if keyboard == '6':
             identity = input (f"It seems you're curious. Who are we spying on?\n")
-            data = connection.send(WHOIS_REQUEST(identity))
+            data = server.send(WHOIS_REQUEST(identity))
             
             if data['response_type'] != 20:
                 username_spy, channels, transport, wireguard_key = WHOIS_RESPONSE(data)
@@ -94,27 +95,23 @@ def main():
             #CHANNEL_CREATE(channel_name=channel_name,description=description)
             server.createChannel(channel_name,description)
         if keyboard =="8":
-            server.getChannels()
-            #print(CHANNEL_LIST_PRO())
+            print(server.CHANNEL_LIST_PRO())
         if keyboard =="9":
             channel_name = input("Channel name:")
-            server.channelInfo(channel_name)
-           # CHANNEL_INFO(channel_name)
+            server.CHANNEL_INFO(channel_name)
         if keyboard =="10":
             channel_name = input("Channel name:")
-            server.join_channel(channel_name)
-            #CHANNEL_JOIN(channel_name)
+            server.CHANNEL_JOIN(channel_name)
         if keyboard =="11":
             channel_name = input("Channel name:")
-            
-            CHANNEL_LEAVE(channel_name)
+            server.CHANNEL_LEAVE(channel_name)
             #TODO
         if keyboard =="12":
             channel_name = input("Channel name:")
             msg = input("Message:")
             msg = Message(msg)
             msg = msg.data
-            CHANNEL_MESSAGE(channel_name,msg)
+            server.CHANNEL_MESSAGE(channel_name,msg)
         
             
         
@@ -126,10 +123,10 @@ def main():
     
     
     #goodbye = DISCONNECT_RESPONSE()
-    data = connection.disconnect()
+    data = server.disconnect()
     #print(data)
     goodbye = data["message"]
-    print(f"{goodbye} from IP address {connection.ip} at port number {connection.port}\n Username {user.getUsername()} is now terminated")  
+    print(f"{goodbye} from IP address {server.connection.ip} at port number {server.connection.port}\n Username {server.getUsername()} is now terminated")  
 
 
 
