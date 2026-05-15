@@ -33,14 +33,16 @@ async def main():
     keyboard = input(menu_text)
     if keyboard == "1":
     
-        print("m")
         server.connect()
-        await asyncio.gather(
+        ping_task = asyncio.create_task(server.start_ping_loop())
+        listen = asyncio.create_task(server.listen())
+        handle_input = asyncio.create_task(handleInput())
         
-        server.listen(),
-        server.start_ping_loop(),
-        handleInput()
-    )
+        await handle_input
+        listen.cancel()
+        ping_task.cancel()
+        
+        
         
        
     else:
@@ -66,26 +68,31 @@ async def handleInput():
 13. User MSG\n
     """
     #very wonky but this is just to test
-    keyboard = input(loop_text)
+    loop = asyncio.get_event_loop()
+    keyboard = await loop.run_in_executor(None, input, loop_text)
+    #keyboard = input(loop_text)
     while (keyboard != "2"):
         
         if keyboard == "3":
+            new_username = await loop.run_in_executor(None, input, "Enter you new username: ")
             
-            new_username = input(f"Enter you new username: ")
+            #new_username = input(f"Enter you new username: ")
             
             data = await server.set_username(new_username)
             
             
 
         if keyboard == "4":
-            
-            channel = input(f"Filter by channel [Y\\N]?")
+            channel = await loop.run_in_executor(None, input, "Filter by channel [Y\\N]?")
+            #channel = input(f"Filter by channel [Y\\N]?")
             if channel == "N":
                 data = await server.user_list_pro()
                 
                 
             elif channel =="Y":
-                filter_channel = input("channel name:\n")
+                filter_channel = await loop.run_in_executor(None, input, "channel name:\n")
+                
+                #filter_channel = input("channel name:\n")
                 data =await server.user_list_pro(filter_channel)
                 
             else:
@@ -97,13 +104,17 @@ async def handleInput():
             data = await server.whoami()
             
         if keyboard == '6':
-            identity = input (f"It seems you're curious. Who are we spying on?\n")
+            identity = await loop.run_in_executor(None, input, "It seems you're curious. Who are we spying on?\n")
+            
+            #identity = input (f"It seems you're curious. Who are we spying on?\n")
             data = await server.whosis(identity)
         
         if keyboard =="7":
+            channel_name = await loop.run_in_executor(None, input, "Channel name:\n")
+            description = await loop.run_in_executor(None, input, "Description:\n")
             
-            channel_name = input("Channel name:")
-            description = input("Description:")
+            #channel_name = input("Channel name:")
+            #description = input("Description:")
             await server.CHANNEL_CREATE(channel_name,description)
 
         if keyboard =="8":
@@ -111,34 +122,45 @@ async def handleInput():
             print(await server.CHANNEL_LIST_PRO())
 
         if keyboard =="9":
+            channel_name = await loop.run_in_executor(None, input, "Channel name:\n")
             
-            channel_name = input("Channel name:")
+            #channel_name = input("Channel name:")
             await server.CHANNEL_INFO(channel_name)
 
         if keyboard =="10":
+            channel_name = await loop.run_in_executor(None, input, "Channel name:\n")
             
-            channel_name = input("Channel name:")
+            #channel_name = input("Channel name:")
             await server.CHANNEL_JOIN(channel_name)
 
         if keyboard =="11":
+            channel_name = await loop.run_in_executor(None, input, "Channel name:\n")
             
-            channel_name = input("Channel name:")
+            #channel_name = input("Channel name:")
             await server.CHANNEL_LEAVE(channel_name)
 
             #TODO
         if keyboard =="12":
+            channel_name = await loop.run_in_executor(None, input, "Channel name:\n")
+            msg = await loop.run_in_executor(None, input, "Message:\n")
             
-            channel_name = input("Channel name:")
-            msg = input("Message:")
+            #channel_name = input("Channel name:")
+            #msg = input("Message:")
             msg = Message(msg)
             msg = msg.data
             await server.CHANNEL_MESSAGE(channel_name,msg)
-        keyboard = input(loop_text)
+        
         
         if keyboard == "13":
-            username = input("Send message to ?")
-            msg = input("message?")
+            username = await loop.run_in_executor(None, input, "Send message to ?\n")
+            msg = await loop.run_in_executor(None, input, "message?\n")
+            
+            
+            #username = input("Send message to ?")
+            #msg = input("message?")
             data = await server.user_message(username,msg)
+        keyboard = await loop.run_in_executor(None, input, loop_text)
+
         
             
   

@@ -2,6 +2,7 @@ import msgpack # Install with: pip install msgpack
 import socket
 import random
 import asyncio
+import time
 #from channel_msg import *
 from user_messages import *
 from session_msg import *
@@ -42,7 +43,7 @@ class Connection:
             data["session"] = self.session
         data["request_handle"] = random.randint(0, 2**32 - 1)
         new_data = msgpack.packb(data)
-        print(f"sending: {data}")
+        print(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
         loop = asyncio.get_event_loop()
         
         #self.listening = False  # pause the listener
@@ -51,8 +52,8 @@ class Connection:
         #response = await loop.run_in_executor(None, self.sock.recv, 1024)
         
         #self.listening = True  # resume listener
-        await asyncio.sleep(3)
-        print("response : ", self.response[data["request_type"]])
+        await asyncio.sleep(2)
+        print(f"{time.strftime('%X')} response : ", self.response[data["request_type"]])
         if self.response[data["request_type"]] == 0:
             return {}
         return self.response[data["request_type"]]
@@ -67,7 +68,7 @@ class Connection:
             
             data = await loop.run_in_executor(None, self.sock.recv, 1024)
             data = msgpack.unpackb(data)
-            print(f"Listener: {data}")
+            print(f"{GREEN}{time.strftime('%X')} Listener: {data}{RESET}")
             if data["response_type"] == 23:
                 self.listening = False
                 
@@ -294,7 +295,7 @@ class Manager:
         data = await self.connection.send(data)
         response_type = data["response_type"]
         if response_type ==24:
-            print(f"{RED}ping{RESET}")
+            print(f"{RED}ping succesful{RESET}")
         else:
             error = data["error"]
             print(f"Error: \"{error}\"")
@@ -305,6 +306,7 @@ class Manager:
         while self.connection.listening:
             await self.ping()
             await asyncio.sleep(30)
+        print("pinging stopped")
     
     async def disconnect(self):
         data= {
