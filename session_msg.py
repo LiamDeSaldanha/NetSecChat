@@ -6,7 +6,7 @@ import random
 def CONNECT_REQUEST():
     return {
         'request_type' : 1, 
-        'request_handle': random.randint(0, 2**32 - 1)
+        
         }
 
 
@@ -18,26 +18,24 @@ def CONNECT_RESPONSE(data):
     return session, welcome, username
 
 """PING_REQUEST"""
-def PING_REQUEST(session):
+def PING_REQUEST():
     return {
         'request_type':3,
-        'session': session,
-        'request_handle': random.randint(0, 2**32 - 1)
+        
+        
 
     }
 
 """PING_RESPONSE-->REQUEST_TYPE = 23"""
 def PING_RESPONSE(data):
-    session = data['session']
     #inlcude response handle?
     return data
 
 """DISCONNECT_REQUEST"""
-def DISCONNECT_REQUEST(session):
+def DISCONNECT_REQUEST():
     return {
-        'request_type' : 2,
-        'session' : session,
-        'request_handle': random.randint(0, 2**32 - 1)
+        'request_type' : 2
+        
     }
 
 """DISCONNECT_RESPONSE-->REPONSE TYPE = 23"""

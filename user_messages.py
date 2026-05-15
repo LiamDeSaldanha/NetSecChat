@@ -4,20 +4,20 @@ import random
 
 # = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 #sock.connect(('csc4026z.link', 51825))
-#sock.send(msgpack.packb({'session': 1, 'request_type':3, 'request_handle': random.randint(0, 2**32 - 1)}))
+#sock.send(msgpack.packb({'': 1, 'request_type':3, 'request_handle': random.randint(0, 2**32 - 1)}))
 #data, addr = sock.recvfrom(4096)
 #print(msgpack.unpackb(data))
 
-# This will return an error saying "Session not found", because you're not logged in yet. That confirms the server is active.
+# This will return an error saying " not found", because you're not logged in yet. That confirms the server is active.
 
 
 
 """SET_USERNAME_RESPONSE"""
-def SET_USERNAME_REQUEST(session, new_username):
+def SET_USERNAME_REQUEST( new_username):
     return {
         'request_type':  13,
-        'session': session,
-        'request_handle': random.randint(0, 2**32 - 1),
+        
+        
         'username': new_username
     }
 
@@ -30,10 +30,10 @@ def SET_USERNAME_RESPONSE(data):
 
 """USER_LIST_REQUEST"""
 #separate message for listing users in a specific channel?
-def USER_LIST(session):
+def USER_LIST():
     return {
         'request_type': 14,
-        'session': session,
+        
         'request_handle': random.randint(0, 2**32 - 1)
     }
 
@@ -44,10 +44,10 @@ def USER_LIST_RESPONSE(data):
     return users, next_page
 
 """WHOAMI_REQUEST"""
-def WHOAMI_REQUEST(session):
+def WHOAMI_REQUEST():
     return {
         'request_type': 11,
-        'session': session,
+        
         'request_handle': random.randint(0, 2**32 - 1)
     }
 
@@ -56,11 +56,11 @@ def WHOAMI_RESPONSE(data):
     username = data['username']
     return username
 
-def WHOIS_REQUEST(session, username):
+def WHOIS_REQUEST( username):
     return {
         'request_type': 10,
-        'session': session,
-        'request_handle': random.randint(0, 2**32 - 1),
+        
+        
         'username': username
     }
 
