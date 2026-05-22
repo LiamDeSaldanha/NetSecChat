@@ -143,8 +143,6 @@ async def handleInput():
             msg = input("message?")
             data = await server.user_message(username,msg)
         if keyboard == "14":
-            iniatator = Initiator("ZixewENi85M3vxEUIu0TC5/nrzuUsHAT4ZTdhc8BC0M=","3L4lXBov4acmD/f8qQOa076cSl/ZwGvRkksoqp9btbA=") 
-            data = iniatator.handshake_message()
             print(data)
             data = await server.send(data)
         
