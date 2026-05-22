@@ -8,6 +8,7 @@ from user_messages import *
 from session_msg import *
 #from classes import connection
 from classes import *
+from encyprtion_Liam import *
 #connection = Connection('csc4026z.link', 51825)    
 
 
@@ -24,6 +25,7 @@ async def main():
         
     elif keyboard == "2":
         server.setConnectionType("encrypted")
+        
     else:
         print("Invalid type")
     
@@ -64,6 +66,7 @@ async def handleInput():
 11.CHANNEL_LEAVE\n
 12.CHANNEL_MSG\n
 13. User MSG\n
+14. Encryption\n
     """
     #very wonky but this is just to test
     keyboard = input(loop_text)
@@ -139,6 +142,11 @@ async def handleInput():
             username = input("Send message to ?")
             msg = input("message?")
             data = await server.user_message(username,msg)
+        if keyboard == "14":
+            iniatator = Initiator("ZixewENi85M3vxEUIu0TC5/nrzuUsHAT4ZTdhc8BC0M=","3L4lXBov4acmD/f8qQOa076cSl/ZwGvRkksoqp9btbA=") 
+            data = iniatator.handshake_message()
+            print(data)
+            data = await server.send(data)
         
             
   
