@@ -11,8 +11,15 @@ from session_msg import *
 from classes import *
 import sys
 import os
+from encr import *
 #connection = Connection('csc4026z.link', 51825)    
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
+
+my_static_private = os.getenv('my_static_private')
+my_static_public = os.getenv('my_static_public')
 
 server = Manager() 
 
@@ -71,6 +78,7 @@ async def handleInput():
 11.CHANNEL_LEAVE\n
 12.CHANNEL_MSG\n
 13. User MSG\n
+14. test\n
     """
     #very wonky but this is just to test
     loop = asyncio.get_event_loop()
@@ -169,6 +177,9 @@ async def handleInput():
             #username = input("Send message to ?")
             #msg = input("message?")
             data = await server.user_message(username,msg)
+            
+        if keyboard == "14":
+            intiator = Initiator(my_static_public,my_static_private)
         keyboard = await loop.run_in_executor(None, input, loop_text)
 
         
