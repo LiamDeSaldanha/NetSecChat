@@ -11,7 +11,7 @@ from session_msg import *
 from classes import *
 import sys
 import os
-from encr import *
+from encryption import *
 #connection = Connection('csc4026z.link', 51825)    
 
 server = Manager() 

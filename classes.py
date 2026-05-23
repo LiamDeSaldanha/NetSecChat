@@ -4,7 +4,7 @@ import random
 import asyncio
 import time
 #from channel_msg import *
-from encr import *
+from encryption import *
 from user_messages import *
 from session_msg import *
 from dotenv import load_dotenv
