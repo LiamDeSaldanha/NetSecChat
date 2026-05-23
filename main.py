@@ -13,27 +13,24 @@ import sys
 import os
 from encr import *
 #connection = Connection('csc4026z.link', 51825)    
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
-my_static_private = os.getenv('my_static_private')
-my_static_public = os.getenv('my_static_public')
 
 server = Manager() 
-
+ 
 async def main():
     typeOfConnection_text = f"Welcome to a little test!\nOptions:\n1. Cleartext\n2. Encrypted\n"
     menu_text = f"Welcome to a little test!\nOptions:\n1. CONNECT\n"
-    keyboard = input(typeOfConnection_text)
+    type_of_conenction = input(typeOfConnection_text)
     
-    if keyboard =="1":
+    if type_of_conenction =="1":
         server.setConnectionType("cleartext")
         
         
-    elif keyboard == "2":
+    elif type_of_conenction == "2":
         server.setConnectionType("encrypted")
+        
+        
+        
+        
     else:
         print("Invalid type")
     
@@ -42,18 +39,18 @@ async def main():
     
     keyboard = input(menu_text)
     if keyboard == "1":
-    
-        server.connect()
-        ping_task = asyncio.create_task(server.start_ping_loop())
-        listen = asyncio.create_task(server.listen())
-        handle_input = asyncio.create_task(handleInput())
         
-        await handle_input
+        server.connect()
+        #ping_task = asyncio.create_task(server.start_ping_loop())
+        #listen = asyncio.create_task(server.listen())
+        #handle_input = asyncio.create_task(handleInput())
+        
+        #await handle_input
         
         
        
         
-        await asyncio.gather(listen, ping_task, return_exceptions=True)
+        #await asyncio.gather(listen, ping_task, return_exceptions=True)
         
         
        
@@ -180,6 +177,8 @@ async def handleInput():
             
         if keyboard == "14":
             intiator = Initiator(my_static_public,my_static_private)
+            data = intiator.handshake_message()
+            data = await server.send(data)
         keyboard = await loop.run_in_executor(None, input, loop_text)
 
         

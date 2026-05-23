@@ -4,9 +4,11 @@ import random
 import asyncio
 import time
 #from channel_msg import *
+from encr import *
 from user_messages import *
 from session_msg import *
-
+from dotenv import load_dotenv
+import os
 RED     = "\033[91m"
 GREEN   = "\033[92m"
 YELLOW  = "\033[93m"
@@ -30,7 +32,7 @@ class Connection:
         data["request_handle"] = random.randint(0, 2**32 - 1)
         data = msgpack.packb(data)
         self.sock.send(data)
-        data = self.sock.recv(4096)
+        data = self.sock.recv(1024)
         data = msgpack.unpackb(data)
         self.session = data["session"]
         return data  
@@ -57,6 +59,25 @@ class Connection:
         if self.response[data["request_type"]] == 0:
             return {}
         return self.response[data["request_type"]]
+    async def send_wireguard(self, data):
+        
+        new_data = data if isinstance(data, bytes) else msgpack.packb(data)
+        print(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
+        self.sock.send(new_data)
+        print("sent: ", new_data)
+        
+        # Enable response receiving
+        loop = asyncio.get_event_loop()
+        response_data = await loop.run_in_executor(None, self.sock.recv, 1024)
+        # Don't unpack if response is raw binary (WireGuard format)
+        if response_data[:1] == b'\x02':  # WireGuard Message 2
+            print(f"{time.strftime('%X')} response: {response_data}")
+        else:
+            response_data = msgpack.unpackb(response_data)
+            print(f"{time.strftime('%X')} response: {response_data}")
+        return response_data
+        
+        
     #TODO
     async def disconnect(self,data):
         data = await self.send(data)
@@ -119,6 +140,8 @@ class Manager:
        
     def send(self,data):
         return self.connection.send(data)
+    def send_wireguard(self,data):
+        return self.connection.send_wireguard(data)
     
     
     
@@ -275,23 +298,63 @@ class Manager:
     
     #! Session Messages
     def connect(self):
-        data= {
-            "request_type":1
-        } 
-        data = self.connection.connect(data)
-        print(f"send protocol: {data}")
-        response_type = data["response_type"]
-        if response_type ==22:
-            print(f"connected")
-            self.useranme = data["username"]
-            print(f"username set to {self.useranme}")
-        else:
-            error = data["error"]
-            print(f"Error: \"{error}\"")
+        print(self.connection.port)
+        if self.connection.port == 51825:
             
-        return data
         
+            data= {
+                "request_type":1
+            } 
+            data = self.connection.connect(data)
+            print(f"send protocol: {data}")
+            response_type = data["response_type"]
+            if response_type ==22:
+                print(f"connected")
+                self.useranme = data["username"]
+                print(f"username set to {self.useranme}")
+            else:
+                error = data["error"]
+                print(f"Error: \"{error}\"")
+                
+            return data
+        elif self.connection.port == 51820:
+            
+
+            load_dotenv()
+            my_static_private = os.getenv('my_static_private')
+            my_static_private = base64.b64decode(my_static_private) #b'\x99x\x93eP\xdd\xb7h\xd5dJ\xc7\xa5~\x83\xbdX\x04M\xe29\x15\xe2\xf1\xe8\xd8VFk0\xf8\xa1'
+            my_static_public  = bytes(nacl.public.PrivateKey(my_static_private).public_key)
+
+            print("my_static_private: ",my_static_private)
+            print("my_static_public: ",my_static_public)
+            intiator = Initiator(my_static_public,my_static_private)
+            data = intiator.new_handshake()
+            print(f"data {data}")
+            binary_msg = self.serialize_message_1(data)
+            print(f"binray {binary_msg}")
+            self.connection.sock.send(binary_msg)
+            response = self.connection.sock.recv(1024)
+            intiator.process_response(response)
+            print("!!!!!!!!!!!!!!!!!!!!!!!!")
+            
+            
+            
+            
+            
+        elif self.connection.port == 51821:
+            pass
         
+    def serialize_message_1(self,msg_dict):
+        return (
+            msg_dict["type"] +
+            msg_dict["reserved"] +
+            msg_dict["sender"].to_bytes(4, 'little') +
+            msg_dict["ephemeral"] +
+            msg_dict["static"] +
+            msg_dict["timestamp"] +
+            msg_dict["mac1"] +
+            msg_dict["mac2"]
+        )      
     async def ping(self):
         data= {
             "request_type":3
@@ -335,7 +398,7 @@ class Manager:
     
     
     async def listen(self):
-        print("listner started")
+        print(f"{GREEN}listner started {RESET}")
         await self.connection.listen()
         print("listener closed")
         
