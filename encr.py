@@ -1,5 +1,5 @@
 import datetime
-
+import msgpack
 import nacl.bindings
 import nacl.public
 import base64
@@ -257,8 +257,39 @@ class Initiator:
         print(f"T_I_recv: {self.T_I_recv}")
         
         self.N_I_send = self.N_I_recv = 0
-        self.receiver_index = sender
+        self.server_index = sender
         print("Handshake successful!")
+    def create_wireguard_transport_message(self,P):
+        type = b'\x04'
+        P_byte = P#msgpack.packb(P)
+        msg_packet = AEAD_encrypt(self.T_I_send,self.N_I_send,P,b'')
+        
+        msg = (type+b'\x00' * 3+self.server_index.to_bytes(4,"little")+self.N_I_send.to_bytes(8,"little")+msg_packet)
+        
+        self.N_I_send+=1
+        return msg
+    def handle_wireguard_response(self,raw_response):
+        
+        
+        type     = raw_response[0:1]
+        reserved     = raw_response[1:4]
+        receiver     = int.from_bytes(raw_response[4:8], 'little')
+        counter      = int.from_bytes(raw_response[8:16], 'little')
+        packet    = raw_response[16:]
+        
+        
+        
+        
+        
+        plaintext = AEAD_decrypt(self.T_I_recv, counter, packet, b'')
+        self.N_I_recv += 1
+        
+        
+        msg =plaintext
+        print(f"Received: {msg}")
+        return msg
+        
+        
         
 #I = Initiator(0,0)
 #I.process_response(b'\x02\x00\x00\x00\x15\x0b\xae\xd4)\x89\x000\xb4W\x17\xd2\x8b\x9fJ\xdb\xb5\xd1yq\xdd\xf6C*\x9c\xa5\xb7A\x05\x8e#5H\x12\xf9Z\x95I:@\xbc%\xab\x930\x04\x85_\x93\xb3\x94\xe3e\xad\xbf\xbd^|5\xef\x95f]\xd2\xef\xc3\x12v\xb6\xe4\xd7\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')

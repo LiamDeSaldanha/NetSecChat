@@ -41,16 +41,16 @@ async def main():
     if keyboard == "1":
         
         server.connect()
-        #ping_task = asyncio.create_task(server.start_ping_loop())
-        #listen = asyncio.create_task(server.listen())
-        #handle_input = asyncio.create_task(handleInput())
+        ping_task = asyncio.create_task(server.start_ping_loop())
+        listen = asyncio.create_task(server.listen())
+        handle_input = asyncio.create_task(handleInput())
         
-        #await handle_input
+        await handle_input
         
         
        
         
-        #await asyncio.gather(listen, ping_task, return_exceptions=True)
+        await asyncio.gather(listen, ping_task, return_exceptions=True)
         
         
        
