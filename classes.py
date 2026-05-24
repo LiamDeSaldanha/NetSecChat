@@ -65,6 +65,8 @@ class Connection:
         await asyncio.sleep(2)
         info =self.response[data["request_type"]] 
         logging.debug(f"{time.strftime('%X')} response : {info}" )
+        if data["request_type"] == 12:
+            return self.response[0]
         if self.response[data["request_type"]] == 0:
             return {}
         return self.response[data["request_type"]]
@@ -109,8 +111,10 @@ class Connection:
             data = await loop.run_in_executor(None, self.sock.recv, 1024)
             if self.port == 51820:
                 data = self.initiator.handle_wireguard_response(data)
-            
             data = msgpack.unpackb(data)
+            #if data["response_type"] == 30:
+                
+                #data = msgpack.unpackb(data,raw=False)
             logging.debug(f"{GREEN}{time.strftime('%X')} Listener: {data}{RESET}")
             
                 
@@ -300,6 +304,7 @@ class Manager:
 
     """CHANNEL_MESSAGE"""
     async def CHANNEL_MESSAGE(self,channel,message):
+        #message = message.encode('utf-8')
         data= {
             "request_type":9,               # request_type u8
             
@@ -307,6 +312,9 @@ class Manager:
             "message":message
         } 
         data = await self.connection.send(data)
+        if data == {}:
+            logging.debug(f"repsonse to channel message not sent {data}")
+            return
         response_type = data["response_type"]
         if response_type ==30:
             print(f"Message sent to channel \"{channel}\"")

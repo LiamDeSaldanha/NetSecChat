@@ -181,9 +181,17 @@ class ChatMessageBar(Widget):
 
             case "/create":
                 if len(parts) > 1:
-                    self.pending["channel_name"] = parts[1]
-                    self.waiting_for = "channel_description"
-                    chat.add_message("System", f"Enter description for {parts[1]}:")
+                    sub = parts[1].split(" ", 1)
+                    if len(sub) == 2:
+                        
+                        await self.app.server.CHANNEL_CREATE(sub[0],sub[1])
+                        chat.add_message("System", f"Enter description for {parts[1]}:")
+                    elif len(sub)==1:
+                        await self.app.server.CHANNEL_CREATE(sub[0],"")
+                        chat.add_message("System", f"Enter description for {parts[1]}:")
+                        
+                    else:
+                        chat.add_message("System", "Usage: /create <channel>")
                 else:
                     chat.add_message("System", "Usage: /create <channel>")
 
@@ -203,12 +211,23 @@ class ChatMessageBar(Widget):
                     await self.app.server.CHANNEL_INFO(parts[1])
                 else:
                     chat.add_message("System", "Usage: /info <channel>")
+            case "/msgchannel":
+                if len(parts) > 1:
+                    sub = parts[1].split(" ", 1)
+                    if len(sub) == 2:
+                        await self.app.server.CHANNEL_MESSAGE(sub[0], sub[1])
+                        chat.add_message(f"Channel → {sub[0]}", sub[1])
+                    else:
+                        chat.add_message("System", "Usage: /msg <username> <message>")
+                else:
+                    chat.add_message("System", "Usage: /msg <username> <message>")
 
             case "/help":
                 chat.add_message("System",
                     "/disconnect | /username <name> | /whoami | /whois <user> | "
                     "/userlist | /channels | /join <channel> | /leave <channel> | "
-                    "/create <channel> | /msg <user> <message> | /info <channel>"
+                    "/create <channel> <description=optional>| /msg <user> <message> | /info <channel>|"
+                    "/msgChannel <channel> <message>"
                 )
 
             case _:

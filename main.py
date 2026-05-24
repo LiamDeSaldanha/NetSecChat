@@ -75,7 +75,6 @@ async def handleInput():
     #very wonky but this is just to test
     loop = asyncio.get_event_loop()
     keyboard = await loop.run_in_executor(None, input, loop_text)
-    
     while True:
         if keyboard =="2":
             data = await server.disconnect()
@@ -156,8 +155,7 @@ async def handleInput():
             
             #channel_name = input("Channel name:")
             #msg = input("Message:")
-            msg = Message(msg)
-            msg = msg.data
+            
             await server.CHANNEL_MESSAGE(channel_name,msg)
         
         
@@ -169,12 +167,10 @@ async def handleInput():
             #username = input("Send message to ?")
             #msg = input("message?")
             data = await server.user_message(username,msg)
-            
-        if keyboard == "14":
-            intiator = Initiator(my_static_public,my_static_private)
-            data = intiator.handshake_message()
-            data = await server.send(data)
         keyboard = await loop.run_in_executor(None, input, loop_text)
+        
+            
+        
 
         
             
