@@ -14,7 +14,8 @@ GREEN   = "\033[92m"
 YELLOW  = "\033[93m"
 BLUE    = "\033[94m"
 RESET   = "\033[0m"
-
+import logging
+logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 #TODO
 class Connection:
     
@@ -27,6 +28,7 @@ class Connection:
         self.response = [0 for _ in range((37-22)+1)]
         self.session = None
         self.initiator = None
+        self.on_message_received = None 
         
     def connect(self,incoming_data):
         data =  incoming_data
@@ -53,17 +55,18 @@ class Connection:
         if self.port == 51820:
             new_data = self.initiator.create_wireguard_transport_message(new_data)
             
-        print(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
+        logging.debug(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
         loop = asyncio.get_event_loop()
         
-        #self.listening = False  # pause the listener
+        
         
         await loop.run_in_executor(None, self.sock.send, new_data)
-        #response = await loop.run_in_executor(None, self.sock.recv, 1024)
         
-        #self.listening = True  # resume listener
         await asyncio.sleep(2)
-        print(f"{time.strftime('%X')} response : ", self.response[data["request_type"]])
+        info =self.response[data["request_type"]] 
+        logging.debug(f"{time.strftime('%X')} response : {info}" )
+        if self.response[data["request_type"]] == 12:
+            return self.response[0]
         if self.response[data["request_type"]] == 0:
             return {}
         return self.response[data["request_type"]]
@@ -110,11 +113,15 @@ class Connection:
                 data = self.initiator.handle_wireguard_response(data)
             
             data = msgpack.unpackb(data)
-            print(f"{GREEN}{time.strftime('%X')} Listener: {data}{RESET}")
+            logging.debug(f"{GREEN}{time.strftime('%X')} Listener: {data}{RESET}")
             
                 
             self.response[data["response_type"]-21] = data
-        
+            
+            if self.on_message_received:
+                self.on_message_received(data)
+            else:
+                logging.debug(f"{RED} Listener callback not set {RESET}")
             
                 
         
@@ -137,6 +144,7 @@ class Manager:
         self.username = None
         self.channels = []
         self.connection = None
+        self.on_message_received = None
         
     def setConnectionType(self,type):
         if type == "cleartext":
@@ -330,7 +338,7 @@ class Manager:
             else:
                 error = data["error"]
                 print(f"Error: \"{error}\"")
-                
+            logging.debug(data)    
             return data
         elif self.connection.port == 51820:
             
@@ -366,6 +374,7 @@ class Manager:
             else:
                 error = data["error"]
                 print(f"Error: \"{error}\"")
+            logging.debug(data)    
                 
             return data
             

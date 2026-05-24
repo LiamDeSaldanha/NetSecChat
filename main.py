@@ -45,12 +45,7 @@ async def main():
         listen = asyncio.create_task(server.listen())
         handle_input = asyncio.create_task(handleInput())
         
-        await handle_input
-        
-        
-       
-        
-        await asyncio.gather(listen, ping_task, return_exceptions=True)
+        await asyncio.gather(listen, ping_task, handle_input, return_exceptions=True)
         
         
        
@@ -175,10 +170,6 @@ async def handleInput():
             #msg = input("message?")
             data = await server.user_message(username,msg)
             
-        if keyboard == "14":
-            intiator = Initiator(my_static_public,my_static_private)
-            data = intiator.handshake_message()
-            data = await server.send(data)
         keyboard = await loop.run_in_executor(None, input, loop_text)
 
         
