@@ -45,12 +45,7 @@ async def main():
         listen = asyncio.create_task(server.listen())
         handle_input = asyncio.create_task(handleInput())
         
-        await handle_input
-        
-        
-       
-        
-        await asyncio.gather(listen, ping_task, return_exceptions=True)
+        await asyncio.gather(listen, ping_task, handle_input, return_exceptions=True)
         
         
        
