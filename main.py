@@ -14,7 +14,7 @@ from encryption import *
 server = Manager() 
  
 async def main():
-    typeOfConnection_text = f"Welcome to a little test!\nOptions:\n1. Cleartext\n2. Encrypted\n"
+    typeOfConnection_text = f"Welcome to a little test!\nOptions:\n1. Cleartext\n2. Encrypted\n3. Cookie\n"
     menu_text = f"Welcome to a little test!\nOptions:\n1. CONNECT\n"
     type_of_conenction = input(typeOfConnection_text)
     
@@ -24,6 +24,9 @@ async def main():
         
     elif type_of_conenction == "2":
         server.setConnectionType("encrypted")
+    
+    elif type_of_conenction == "3":
+        server.setConnectionType("cookie")
         
         
         

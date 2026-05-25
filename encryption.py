@@ -40,6 +40,16 @@ def AEAD_decrypt(key, counter, encrypted_data, auth_text):
     counter = struct.pack('<IQ', 0, counter)
     return chacha.decrypt(counter,encrypted_data,auth_text)
 
+def XAEAD_decrypt(key, counter, plain_text, auth_text):
+    return nacl.bindings.crypto_aead_xchacha20poly1305_ietf_encrypt(
+            plain_text, auth_text, counter, key
+        )
+
+def XAEAD_decrypt(key, counter, encrypted_data, auth_text):
+    return nacl.bindings.crypto_aead_xchacha20poly1305_ietf_decrypt(
+        encrypted_data, auth_text, counter, key
+    )
+
 def Hash(inp):
     h = hashlib.blake2s()
     # = input.encode('utf-8')
@@ -85,12 +95,14 @@ def Kdf3(key, message):
     t_2 = HMac(t_0, t_1 + b'\x02')
     t_3 = HMac(t_0, t_2 + b'\x03')
     return (t_1, t_2, t_3)
+
 def timestamp1():
     t = time.time()
     print("t",t)
     secs = int(t) + 10 + (1 << 62)  # TAI64: Unix time + leap offset + 2^62 flag
     nsecs = int((t % 1) * 1e6)       # fractional seconds → nanoseconds
     return struct.pack('>QI', secs, nsecs)
+
 def timestamp():
     t = time.time()
     print("t",t)
@@ -100,6 +112,7 @@ def timestamp():
     nsecs = int((t % 1) * 1e6)
     timestamp_ = secs.to_bytes(8,"big")+nsecs.to_bytes(4,"big")
     return timestamp_
+
 class Message:
     def __init__(self):
         self.message_type = 0
@@ -109,16 +122,20 @@ class Message:
         self.encrypted_static =0
         self.encrypted_timestamp =0
         self.mac1 =0
+        self.mac2 = 0
 
 class Initiator:
     def __init__(self,static_public,static_private):
-        self.chaining_key = Hash(b'Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s')
-        print(f"# chain_key = Hash(Construction) {self.chaining_key}")
-        self.hash = Hash(self.chaining_key + b'WireGuard v1 zx2c4 Jason@zx2c4.com')
-        print(f"# hash = Hash(chain_key || Identifier) {self.hash}")
+        self.initial_chaining_key = Hash(b'Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s')
+        #print(f"# chain_key = Hash(Construction) {self.chaining_key}")
+        self.initial_hash = Hash(self.initial_chaining_key + b'WireGuard v1 zx2c4 Jason@zx2c4.com')
+        #print(f"# hash = Hash(chain_key || Identifier) {self.hash}")
         
-        self.hash = Hash(self.hash + SERVER_STATIC_PUBLIC_KEY)
-        print(f"# hash = Hash(hash || S_R_pub) {self.hash}")
+        self.initial_hash = Hash(self.initial_hash + SERVER_STATIC_PUBLIC_KEY)
+        #print(f"# hash = Hash(hash || S_R_pub) {self.hash}")
+        #set working variables--must be overwritten for threading to work
+        self.chaining_key = self.initial_chaining_key
+        self.hash = self.initial_hash
         
         self.E_priv_i , self.E_pub_i = DH_Generate()
         #self.E_priv_i =  b'\xac\x03\x18b0\xc4\xf7\xd4*\xa7-\x81&\xfb\xc7\xb3PG0\xae\xa4y0\x90\xe2\xe4\xe2\xa0g\\\x83\xb6'
@@ -133,10 +150,15 @@ class Initiator:
         self.static_public=static_public
         self.static_private=static_private
         self.last_received_cookie = None
+        self.last_sent_mac1 = None
+        self.last_received_cookie = None
         
     def new_handshake(self):
         #client_private_key = b'\x99x\x93eP\xdd\xb7h\xd5dJ\xc7\xa5~\x83\xbdX\x04M\xe29\x15\xe2\xf1\xe8\xd8VFk0\xf8\xa1'
         #server_public_key = b'f,^\xc0Cb\xf3\x937\xbf\x11\x14"\xed\x13\x0b\x9f\xe7\xaf;\x94\xb0p\x13\xe1\x94\xdd\x85\xcf\x01\x0bC'
+        self.chaining_key = self.initial_chaining_key
+        self.hash = self.initial_hash
+
         msg = Message()
         msg.sender_index =  random.getrandbits(32)#4001697114
         msg.message_type = b'\x01'
@@ -183,6 +205,15 @@ class Initiator:
         )
         print(f"concat message {concat_msg}")
         msg.mac1 = Mac(Hash(b'mac1----' + SERVER_STATIC_PUBLIC_KEY), concat_msg)
+        self.last_sent_mac1 = msg.mac1
+        msg_beta = msg.message_type + msg.reserved_zero + msg.sender_index.to_bytes(4, 'little') + msg.unencrypted_ephemeral + msg.encrypted_static + msg.encrypted_timestamp + msg.mac1
+
+        if self.last_received_cookie == None:
+            msg.mac2 = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        else:
+            msg.mac2 = Mac(self.last_received_cookie, msg_beta)
+
+
         print(f"mac {msg.mac1}")
         final_msg = {
             "type": msg.message_type,
@@ -192,7 +223,7 @@ class Initiator:
             "static":msg.encrypted_static,
             "timestamp":msg.encrypted_timestamp,
             "mac1":msg.mac1,
-            "mac2":b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00',
+            "mac2":msg.mac2,
         }
         print(f"no serialised {final_msg}")
 
@@ -259,6 +290,17 @@ class Initiator:
         self.N_I_send = self.N_I_recv = 0
         self.server_index = sender
         print("Handshake successful!")
+
+    def process_response_cookie(self, raw_response):
+        msg_type     = b'\x03'
+        reserved     = raw_response[1:4]
+        receiver     = int.from_bytes(raw_response[4:8], 'little')
+        nonce = raw_response[8:32]
+        encrypted_cookie = raw_response[32:64] #encrypted cookie (16 bytes) and auth text (16 bytes)
+        decrypted_cookie = XAEAD_decrypt(Hash(b"cookie--" + SERVER_STATIC_PUBLIC_KEY), nonce, encrypted_cookie, self.last_sent_mac1)
+        self.last_received_cookie = decrypted_cookie
+        return self.new_handshake()     
+
     def create_wireguard_transport_message(self,P):
         type = b'\x04'
         P_byte = P#msgpack.packb(P)

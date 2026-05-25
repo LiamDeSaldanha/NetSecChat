@@ -32,11 +32,11 @@ class Connection:
         data =  incoming_data
         data["request_handle"] = random.randint(0, 2**32 - 1)
         data = msgpack.packb(data)
-        if self.port == 51820:
+        if self.port == 51820 or self.port == 51821:
             data = self.initiator.create_wireguard_transport_message(data)
         self.sock.send(data)
         data = self.sock.recv(1024)
-        if self.port == 51820:
+        if self.port == 51820 or self.port == 51821:
             data = self.initiator.handle_wireguard_response(data)
         data = msgpack.unpackb(data)
         self.session = data["session"]
@@ -50,7 +50,7 @@ class Connection:
             data["session"] = self.session
         data["request_handle"] = random.randint(0, 2**32 - 1)
         new_data = msgpack.packb(data)
-        if self.port == 51820:
+        if self.port == 51820 or self.port == 51821:
             new_data = self.initiator.create_wireguard_transport_message(new_data)
             
         logging.debug(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
@@ -108,7 +108,7 @@ class Connection:
         while self.listening:
             try: 
                 data = await loop.run_in_executor(None, self.sock.recv, 1024)
-                if self.port == 51820:
+                if self.port == 51820 or self.port == 51821:
                     data = self.initiator.handle_wireguard_response(data)
                 data = msgpack.unpackb(data)
                 
@@ -156,6 +156,8 @@ class Manager:
             self.connection = Connection('csc4026z.link',51825) 
         elif type=="encrypted":
             self.connection = Connection('csc4026z.link',51820)
+        elif type == "cookie":
+            self.connection = Connection('csc4026z.link', 51821)
         else:
             print("Error: invalid type")
         
@@ -367,6 +369,7 @@ class Manager:
             print(f"binray {binary_msg}")
             self.connection.sock.send(binary_msg)
             response = self.connection.sock.recv(1024)
+            #response is b\0x2
             self.connection.initiator.process_response(response)
         
             
@@ -391,7 +394,56 @@ class Manager:
             
             
         elif self.connection.port == 51821:
-            pass
+            load_dotenv()
+            my_static_private = os.getenv('my_static_private')
+            my_static_private = base64.b64decode(my_static_private) #b'\x99x\x93eP\xdd\xb7h\xd5dJ\xc7\xa5~\x83\xbdX\x04M\xe29\x15\xe2\xf1\xe8\xd8VFk0\xf8\xa1'
+            my_static_public  = bytes(nacl.public.PrivateKey(my_static_private).public_key)
+
+            print("my_static_private: ",my_static_private)
+            print("my_static_public: ",my_static_public)
+            self.connection.initiator  = Initiator(my_static_public,my_static_private)
+            data = self.connection.initiator.new_handshake()
+            print(f"data {data}")
+            binary_msg = self.serialize_message_1(data)
+            print(f"binray {binary_msg}")
+            self.connection.sock.send(binary_msg)
+            response = self.connection.sock.recv(1024)
+            #response is 0x3
+                
+            # Decrypt cookie and generate the new handshake with calculated mac2
+            new_handshake_data = self.connection.initiator.process_response_cookie(response)
+            new_binary_msg = self.serialize_message_1(new_handshake_data)
+                
+            # Send the second attempt
+            self.connection.sock.send(new_binary_msg)
+                
+            # Wait for the final 0x2 response
+            final_response = self.connection.sock.recv(1024)
+            if final_response[0:1] == b'\x02':
+                self.connection.initiator.process_response(final_response)
+                print("SECOND CALL OF PROCESS RESPONSE REACHED")
+            else:
+                print("Handshake failed after cookie submission.")
+                return {}
+                
+            data= {
+                "request_type":1
+            } 
+            print("ABOUT TO SEND DATA. IF NO RESPONSE, THREAD IS STUCK WAITING")
+            data = self.connection.connect(data)
+            print(f"send protocol: {data}")
+            logging.debug(data)
+            response_type = data["response_type"]
+            if response_type ==22:
+                print(f"connected")
+                self.useranme = data["username"]
+                print(f"username set to {self.useranme}")
+            else:
+                error = data["error"]
+                print(f"Error: \"{error}\"")
+            logging.debug(data)    
+                
+            return data
         
     def serialize_message_1(self,msg_dict):
         return (
