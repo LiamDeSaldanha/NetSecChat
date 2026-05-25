@@ -424,6 +424,7 @@ class Manager:
         while self.connection.listening:
             await self.ping()
             await self.user_list_pro()
+            await self.CHANNEL_LIST_PRO()
             await asyncio.sleep(30)
         print("pinging stopped")
         

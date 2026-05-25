@@ -20,7 +20,7 @@ from encryption import *
 import logging
 logging.basicConfig(filename='debug.log', level=logging.DEBUG,filemode='w')
     
-user_types = ["Server","User"]
+user_types = ["Server","User","Channel"]
 server_help_msg = "/disconnect | /username <name> | /whoami | /whois <user> | /userlist | /channels | /join <channel> | /leave <channel> | /create <channel> <description=optional>| /msg <user> <message> | /info <channel>|/msgChannel <channel> <message>"
 
 class User(Widget):
@@ -40,8 +40,8 @@ class User(Widget):
         self.type = type
     
     def compose(self):
-        yield Label("User: "+self.label)
-    def on_click(self) -> None:
+        yield Label(self.type+": "+self.label)
+    async def on_click(self) -> None:
         self.app.active_chat =self.label
         chat = self.app.screen.query_one(ChatScreen)
         chat.clear_messages()
@@ -50,6 +50,10 @@ class User(Widget):
         #yield ChatMessage("Server",server_help_msg)
             
             chat.add_message("Help Menu",server_help_msg)
+        if self.type == user_types[2]:
+            await self.app.server.CHANNEL_JOIN(self.label)
+            
+            
             
             
     
@@ -76,11 +80,11 @@ class ChatList(VerticalScroll):
     def compose(self) -> ComposeResult:
         yield User(label="Server",type=user_types[0])
         
-    def add_user(self, username: str) -> None:
-        self.mount(User(label=username))
-    def remove_user(self, username: str) -> None:
+    def add_user(self, username: str,type : str = user_types[1]) -> None:
+        self.mount(User(label=username,type=type))
+    def remove_user(self, username: str,type : str) -> None:
         for user in self.query(User):
-            if user.label == username:
+            if user.label == username and user.type == type:
                 user.remove()
         
             
@@ -266,7 +270,7 @@ class ChatScreen(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         yield ChatMessage("Current chat with","Server")
-        yield ChatMessage("Server",server_help_msg)
+        yield ChatMessage("Help Menu",server_help_msg)
         #self.add_message("Server",server_help_msg)
         self.scroll_end()
     
@@ -456,7 +460,7 @@ class LayoutApp(App):
             #logging.debug(f"All screens: {self.screen_stack}")
             #logging.debug(f"Screen children: {list(self.screen.query('*'))}")
             chat_screen = self.screen.query_one(ChatScreen)
-            username = data.get("username", "System")
+            username = data.get("from_username") or data.get("channel") or "Server"
             
             
             logging.debug(data["response_type"])    
@@ -474,14 +478,34 @@ class LayoutApp(App):
                 for u in self.app.user_list:
                     if u not in data["users"]:
                         
-                        self.screen.query_one(ChatList).remove_user(u)
+                        self.screen.query_one(ChatList).remove_user(u,user_types[1])
                         self.app.user_list.remove(u)
+            if data["response_type"] == 26:
+        
+                for u in data["channels"]:
+                    if u not in self.app.channel_list:
+                        
+                        self.screen.query_one(ChatList).add_user(u,type=user_types[2])
+                        self.app.channel_list += [u]
+                        
+                for u in self.app.channel_list:
+                    if u not in data["channels"]:
+                        
+                        self.screen.query_one(ChatList).remove_user(u,user_types[2])
+                        self.app.channel_list.remove(u)
                     
                 
-                        
-                    
-            
-            chat_screen.add_message(username, message)
+            if data["response_type"] == 30 and  data["response_handle"] == None :
+                
+                if username == self.active_chat:
+                    chat_screen.add_message(username, message)
+            elif  data["response_type"] == 33 and  data["response_handle"] == None :
+                if username == self.active_chat:
+                    chat_screen.add_message(username, message)
+                   
+            else:
+                        chat_screen.add_message(f"Not in current chat: {username}", message)
+                
         except Exception as e:
             logging.debug(f"UI update error: {e}")
 
