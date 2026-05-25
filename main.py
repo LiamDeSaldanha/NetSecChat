@@ -4,9 +4,6 @@ import concurrent
 import msgpack # Install with: pip install msgpack
 import socket
 import random
-from channel_msg import *
-from user_messages import *
-from session_msg import *
 #from classes import connection
 from classes import *
 import sys
@@ -75,7 +72,6 @@ async def handleInput():
     #very wonky but this is just to test
     loop = asyncio.get_event_loop()
     keyboard = await loop.run_in_executor(None, input, loop_text)
-    
     while True:
         if keyboard =="2":
             data = await server.disconnect()
@@ -117,7 +113,7 @@ async def handleInput():
             identity = await loop.run_in_executor(None, input, "It seems you're curious. Who are we spying on?\n")
             
             #identity = input (f"It seems you're curious. Who are we spying on?\n")
-            data = await server.whosis(identity)
+            data = await server.whois(identity)
         
         if keyboard =="7":
             channel_name = await loop.run_in_executor(None, input, "Channel name:\n")
@@ -156,8 +152,7 @@ async def handleInput():
             
             #channel_name = input("Channel name:")
             #msg = input("Message:")
-            msg = Message(msg)
-            msg = msg.data
+            
             await server.CHANNEL_MESSAGE(channel_name,msg)
         
         
@@ -169,8 +164,10 @@ async def handleInput():
             #username = input("Send message to ?")
             #msg = input("message?")
             data = await server.user_message(username,msg)
-            
         keyboard = await loop.run_in_executor(None, input, loop_text)
+        
+            
+        
 
         
             

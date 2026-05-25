@@ -196,10 +196,10 @@ class Initiator:
         }
         print(f"no serialised {final_msg}")
 
-        print(len(self.E_pub_i))        # should be 32
-        print(len(msg.encrypted_static))  # should be 48
-        print(len(msg.encrypted_timestamp))  # should be 28
-        print(len(msg.mac1))            # should be 16
+        print(len(self.E_pub_i))       
+        print(len(msg.encrypted_static))  
+        print(len(msg.encrypted_timestamp))  
+        print(len(msg.mac1))            
         return final_msg
     
     def process_response(self, raw_response):

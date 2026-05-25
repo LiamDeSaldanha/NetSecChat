@@ -12,9 +12,6 @@ import concurrent
 import msgpack # Install with: pip install msgpack
 import socket
 import random
-from channel_msg import *
-from user_messages import *
-from session_msg import *
 #from classes import connection
 from classes import *
 import sys
@@ -23,9 +20,11 @@ from encryption import *
 import logging
 logging.basicConfig(filename='debug.log', level=logging.DEBUG,filemode='w')
     
-
+user_types = ["Server","User","Channel"]
+server_help_msg = "/disconnect | /username <name> | /whoami | /whois <user> | /userlist | /channels | /join <channel> | /leave <channel> | /create <channel> <description=optional>| /msg <user> <message> | /info <channel>|/msgChannel <channel> <message>"
 
 class User(Widget):
+    
     DEFAULT_CSS = """
     User {
         height: 7;
@@ -35,15 +34,50 @@ class User(Widget):
         padding: 1;
     }
     """
-    def __init__(self, label: str):
+    def __init__(self, label: str,type  :str = user_types[1]):
         super().__init__()
         self.label = label
+        self.type = type
     
     def compose(self):
-        yield Label(self.label)
-    def on_click(self) -> None:
+        yield Label(self.type+": "+self.label)
+    async def on_click(self) -> None:
+        self.app.active_chat =self.label
         chat = self.app.screen.query_one(ChatScreen)
         chat.clear_messages()
+        chat.add_message("Current chat with",self.label)
+        if self.label == "Server":
+        #yield ChatMessage("Server",server_help_msg)
+            
+            chat.add_message("Help Menu",server_help_msg)
+        
+        try:   
+            if self.type == user_types[2]:
+                await self.app.server.CHANNEL_JOIN(self.label)
+                history = self.app.channel_list.get(self.label, [])
+                for username, message in history:
+                    chat.add_message(username, message)
+                
+            if self.type == user_types[1]:  
+                
+            
+                history = self.app.user_list.get(self.label, [])
+
+                for username, message in history:
+                    if username =="Me":
+                        
+                        chat.add_message(username, message)
+                    else:
+                        chat.add_message(username, message)
+                        
+                        
+        except Exception as e:
+            logging.debug(f"UI update error: {e}")
+            
+            
+            
+            
+            
     
 class MyInput(Input):
     
@@ -66,9 +100,14 @@ class ChatList(VerticalScroll):
     """
 
     def compose(self) -> ComposeResult:
-        yield User(label="Server")
-    def add_user(self, username: str) -> None:
-        self.mount(User(label=username))
+        yield User(label="Server",type=user_types[0])
+        
+    def add_user(self, username: str,type : str = user_types[1]) -> None:
+        self.mount(User(label=username,type=type))
+    def remove_user(self, username: str,type : str) -> None:
+        for user in self.query(User):
+            if user.label == username and user.type == type:
+                user.remove()
         
             
             
@@ -123,7 +162,21 @@ class ChatMessageBar(Widget):
         else:
             # Regular channel message
             chat.add_message("Me", msg)
+            #chat.add_message("test", self.app.active_chat)
+            if self.app.active_chat != "Server":
+               #chat.add_message("Me special", msg)
+                if self.app.active_chat in self.app.user_list:
+                    await self.app.server.user_message(self.app.active_chat, msg)
+                    self.app.user_list[self.app.active_chat].append(("Me", msg))
+                    
+                if self.app.active_chat in self.app.channel_list:
+                    await self.app.server.CHANNEL_MESSAGE(self.app.active_chat, msg)
+                    self.app.channel_list[self.app.active_chat].append(("Me", msg))
+                    
             
+            
+            #chat.add_message(f"DM → {sub[0]}", sub[1])
+                
             #await self.app.server.CHANNEL_MESSAGE(self.channel, msg)
     
     async def handle_command(self, msg: str, chat) -> None:
@@ -133,59 +186,69 @@ class ChatMessageBar(Widget):
         match cmd:
             case "/disconnect":
                 data = await self.app.server.disconnect()
-                chat.add_message("System", data.get("message", "Disconnected"))
+                chat.add_message("Server", data.get("message", "Disconnected"))
                 self.app.exit()
 
             case "/username":
                 if len(parts) > 1:
                     await self.app.server.set_username(parts[1])
-                    chat.add_message("System", f"Username changed to {parts[1]}")
+                    chat.add_message("Server", f"Username changed to {parts[1]}")
                 else:
-                    chat.add_message("System", "Usage: /username <name>")
+                    chat.add_message("Server", "Usage: /username <name>")
 
             case "/whoami":
                 data = await self.app.server.whoami()
-                chat.add_message("System", str(data))
+                chat.add_message("Server", str(data))
 
             case "/whois":
                 if len(parts) > 1:
-                    data = await self.app.server.whosis(parts[1])
-                    chat.add_message("System", str(data))
+                    data = await self.app.server.whois(parts[1])
+                    chat.add_message("Server", str(data))
                 else:
-                    chat.add_message("System", "Usage: /whois <username>")
+                    chat.add_message("Server", "Usage: /whois <username>")
 
             case "/userlist":
                 data = await self.app.server.user_list_pro()
-                chat.add_message("System", str(data))
+                chat.add_message("Server", str(data))
                 for u in data:
-                    self.screen.query_one(ChatList).add_user(u)
+                    if u not in self.app.user_list:
+                        self.screen.query_one(ChatList).add_user(u)
+                        self.app.user_list += [u]
 
             case "/channels":
                 data = await self.app.server.CHANNEL_LIST_PRO()
-                chat.add_message("System", str(data))
+                chat.add_message("Server", str(data))
 
             case "/join":
                 if len(parts) > 1:
                     await self.app.server.CHANNEL_JOIN(parts[1])
                     self.channel = parts[1]
-                    chat.add_message("System", f"Joined channel {parts[1]}")
+                    chat.add_message("Server", f"Joined channel {parts[1]}")
                 else:
-                    chat.add_message("System", "Usage: /join <channel>")
+                    chat.add_message("Server", "Usage: /join <channel>")
 
             case "/leave":
                 if len(parts) > 1:
                     await self.app.server.CHANNEL_LEAVE(parts[1])
-                    chat.add_message("System", f"Left channel {parts[1]}")
+                    chat.add_message("Server", f"Left channel {parts[1]}")
                 else:
-                    chat.add_message("System", "Usage: /leave <channel>")
+                    chat.add_message("Server", "Usage: /leave <channel>")
 
             case "/create":
                 if len(parts) > 1:
-                    self.pending["channel_name"] = parts[1]
-                    self.waiting_for = "channel_description"
-                    chat.add_message("System", f"Enter description for {parts[1]}:")
+                    sub = parts[1].split(" ", 1)
+                    if len(sub) == 2:
+                        
+                        await self.app.server.CHANNEL_CREATE(sub[0],sub[1])
+                        chat.add_message("Server", f"Enter description for {parts[1]}:")
+                    elif len(sub)==1:
+                        await self.app.server.CHANNEL_CREATE(sub[0],"")
+                        chat.add_message("Server", f"Enter description for {parts[1]}:")
+                        
+                    else:
+                        chat.add_message("Server", "Usage: /create <channel>")
                 else:
-                    chat.add_message("System", "Usage: /create <channel>")
+                    chat.add_message("Server", "Usage: /create <channel>")
 
             case "/msg":
                 if len(parts) > 1:
@@ -194,28 +257,37 @@ class ChatMessageBar(Widget):
                         await self.app.server.user_message(sub[0], sub[1])
                         chat.add_message(f"DM → {sub[0]}", sub[1])
                     else:
-                        chat.add_message("System", "Usage: /msg <username> <message>")
+                        chat.add_message("Server", "Usage: /msg <username> <message>")
                 else:
-                    chat.add_message("System", "Usage: /msg <username> <message>")
+                    chat.add_message("Server", "Usage: /msg <username> <message>")
 
             case "/info":
                 if len(parts) > 1:
                     await self.app.server.CHANNEL_INFO(parts[1])
                 else:
-                    chat.add_message("System", "Usage: /info <channel>")
+                    chat.add_message("Server", "Usage: /info <channel>")
+            case "/msgchannel":
+                if len(parts) > 1:
+                    sub = parts[1].split(" ", 1)
+                    if len(sub) == 2:
+                        await self.app.server.CHANNEL_MESSAGE(sub[0], sub[1])
+                        chat.add_message(f"Channel → {sub[0]}", sub[1])
+                    else:
+                        chat.add_message("Server", "Usage: /msg <username> <message>")
+                else:
+                    chat.add_message("Server", "Usage: /msg <username> <message>")
 
             case "/help":
-                chat.add_message("System",
-                    "/disconnect | /username <name> | /whoami | /whois <user> | "
-                    "/userlist | /channels | /join <channel> | /leave <channel> | "
-                    "/create <channel> | /msg <user> <message> | /info <channel>"
+                chat.add_message("Server",
+                    server_help_msg
                 )
 
             case _:
-                chat.add_message("System", f"Unknown command: {cmd}. Type /help for commands.")
+                chat.add_message("Server", f"Unknown command: {cmd}. Type /help for commands.")
            
 
 class ChatScreen(VerticalScroll):
+    global active_chatScreen
     DEFAULT_CSS = """
     ChatMessages {
         height: 1fr;
@@ -223,14 +295,21 @@ class ChatScreen(VerticalScroll):
     """
 
     def compose(self) -> ComposeResult:
-        yield ChatMessage("server","Hi")
+        yield ChatMessage("Current chat with","Server")
+        yield ChatMessage("Help Menu",server_help_msg)
+        #self.add_message("Server",server_help_msg)
         self.scroll_end()
     
     def add_message(self, username: str, message: str):
         self.mount(ChatMessage(username, message))
-        self.scroll_end()  # scroll to latest message
+        self.scroll_end()  # scroll to latest msg
     def clear_messages(self) -> None:
         self.query(ChatMessage).remove()
+        
+ 
+        
+        
+
     
         
         
@@ -264,7 +343,7 @@ class UserScreen(Screen):
     def on_mount(self) -> None:
         for data in self.app.message_queue:
             chat = self.query_one(ChatScreen)
-            username = data.get("username", "System")
+            username = data.get("username", "Server")
             message = data.get("message", str(data))
             chat.add_message(username, message)
         self.app.message_queue.clear()
@@ -284,7 +363,7 @@ class ChatMessage(Widget):
     ChatMessage.me {
         border: round green;
     }
-    ChatMessage.system {
+    ChatMessage.server {
         border: round $warning;
     }
     Label {
@@ -299,13 +378,14 @@ class ChatMessage(Widget):
         
         if username == "Me":
             self.add_class("me")
-        elif username == "System":
-            self.add_class("system")
+        elif username == "Server":
+            self.add_class("server")
+        
     
     def compose(self) -> ComposeResult:
         if self.username == "Me":
             yield Label(f"[bold green]{self.username}[/bold green]: {self.message}", markup=True)
-        elif self.username == "System":
+        elif self.username == "Server":
             yield Label(f"[bold yellow]{self.username}[/bold yellow]: {self.message}", markup=True)
         else:
             yield Label(f"[bold]{self.username}[/bold]: {self.message}", markup=True)
@@ -366,6 +446,10 @@ class LayoutApp(App):
         super().__init__()
         self.server = Manager()
         self.message_queue = []
+        self.channel_list = {}
+        self.user_list = {}
+        self.server_messages = {}
+        self.active_chat = "Server"
     
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -392,21 +476,84 @@ class LayoutApp(App):
         #logging.debug(f"callback triggered, current screen: {self.screen.id}")
         self.call_later(self._update_ui, data)
 
+    
+    
+    
+    
     def _update_ui(self, data: dict) -> None:
+        
         try:
             #logging.debug(f"Current screen: {self.screen}")
             #logging.debug(f"Screen id: {self.screen.id}")
             #logging.debug(f"All screens: {self.screen_stack}")
             #logging.debug(f"Screen children: {list(self.screen.query('*'))}")
             chat_screen = self.screen.query_one(ChatScreen)
-            username = data.get("username", "System")
+            username = data.get("from_username")  or data.get("channel") or "Server"
+            #if username == "channel":
+            #if username =="Server":
+                   
             
             
             logging.debug(data["response_type"])    
             message = data.get("message", str(data))
             if data["response_type"] == 24:
                 message = "ping successful"
-            chat_screen.add_message(username, message)
+            if data["response_type"] == 35:
+        
+                for u in data["users"]:
+                    if u not in self.app.user_list.copy().keys():
+                        
+                        self.screen.query_one(ChatList).add_user(u)
+                        self.app.user_list[u] = []
+                    #self.app.user_list[username].append((username, message))
+                        
+                for u in self.app.user_list.copy().keys():
+                    if u not in data["users"] and not  len(self.app.user_list.copy().keys())>=10:
+                        
+                        self.screen.query_one(ChatList).remove_user(u,user_types[1])
+                        del self.app.user_list[u]
+                
+            if data["response_type"] == 26:
+        
+                for u in data["channels"]:
+                    if u not in self.app.channel_list.copy().keys():
+                        
+                        self.screen.query_one(ChatList).add_user(u,type=user_types[2])
+                        self.app.channel_list[u] = []
+                    #self.app.channel_list[u].append((username, message))
+                        
+                for u in self.app.channel_list.copy().keys():
+                    if u not in data["channels"] and not len(self.app.channel_list.copy().keys())>=10 :
+                        
+                        self.screen.query_one(ChatList).remove_user(u,user_types[2])
+                        del self.app.channel_list[u]
+                    
+                
+            if data["response_type"] == 30   :
+                
+                if username == self.active_chat and data["response_handle"] == None:
+                    channel_user_name =  data.get("username")
+                    chat_screen.add_message(channel_user_name, message)
+                    self.app.channel_list[username].append((channel_user_name, message))
+                    logging.debug(f"Channel list {self.app.channel_list}")
+                    logging.debug(f"User list {self.app.user_list}")
+
+                    
+                    
+            elif  data["response_type"] == 33  :
+                
+                if username == self.active_chat and data["response_handle"] == None:
+                    chat_screen.add_message(username, message)
+                    self.app.user_list[username].append((username, message))
+                    logging.debug(self.app.user_list)
+                   
+            else:
+                if username == self.active_chat:
+                    chat_screen.add_message(username, message)
+                else:
+                    pass #! enable only for debugging
+                    #chat_screen.add_message(f"Not in current chat: {username}", message)
+                
         except Exception as e:
             logging.debug(f"UI update error: {e}")
 
