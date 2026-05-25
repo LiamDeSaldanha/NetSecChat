@@ -12,9 +12,6 @@ import concurrent
 import msgpack # Install with: pip install msgpack
 import socket
 import random
-from channel_msg import *
-from user_messages import *
-from session_msg import *
 #from classes import connection
 from classes import *
 import sys
@@ -23,9 +20,11 @@ from encryption import *
 import logging
 logging.basicConfig(filename='debug.log', level=logging.DEBUG,filemode='w')
     
-
+user_types = ["Server","User"]
+server_help_msg = "/disconnect | /username <name> | /whoami | /whois <user> | /userlist | /channels | /join <channel> | /leave <channel> | /create <channel> <description=optional>| /msg <user> <message> | /info <channel>|/msgChannel <channel> <message>"
 
 class User(Widget):
+    
     DEFAULT_CSS = """
     User {
         height: 7;
@@ -35,15 +34,24 @@ class User(Widget):
         padding: 1;
     }
     """
-    def __init__(self, label: str):
+    def __init__(self, label: str,type  :str = user_types[1]):
         super().__init__()
         self.label = label
+        self.type = type
     
     def compose(self):
-        yield Label(self.label)
+        yield Label("User: "+self.label)
     def on_click(self) -> None:
+        self.app.active_chat =self.label
         chat = self.app.screen.query_one(ChatScreen)
         chat.clear_messages()
+        chat.add_message("Current chat with",self.label)
+        if self.label == "Server":
+        #yield ChatMessage("Server",server_help_msg)
+            
+            chat.add_message("Help Menu",server_help_msg)
+            
+            
     
 class MyInput(Input):
     
@@ -66,9 +74,14 @@ class ChatList(VerticalScroll):
     """
 
     def compose(self) -> ComposeResult:
-        yield User(label="Server")
+        yield User(label="Server",type=user_types[0])
+        
     def add_user(self, username: str) -> None:
         self.mount(User(label=username))
+    def remove_user(self, username: str) -> None:
+        for user in self.query(User):
+            if user.label == username:
+                user.remove()
         
             
             
@@ -123,7 +136,17 @@ class ChatMessageBar(Widget):
         else:
             # Regular channel message
             chat.add_message("Me", msg)
+            #chat.add_message("test", self.app.active_chat)
+            if self.app.active_chat != "Server":
+               #chat.add_message("Me special", msg)
+                if self.app.active_chat in self.app.user_list:
+                    await self.app.server.user_message(self.app.active_chat, msg)
+                if self.app.active_chat in self.app.channel_list:
+                    await self.app.server.CHANNEL_MESSAGE(self.app.active_chat, msg)
             
+            
+            #chat.add_message(f"DM → {sub[0]}", sub[1])
+                
             #await self.app.server.CHANNEL_MESSAGE(self.channel, msg)
     
     async def handle_command(self, msg: str, chat) -> None:
@@ -158,7 +181,9 @@ class ChatMessageBar(Widget):
                 data = await self.app.server.user_list_pro()
                 chat.add_message("System", str(data))
                 for u in data:
-                    self.screen.query_one(ChatList).add_user(u)
+                    if u not in self.app.user_list:
+                        self.screen.query_one(ChatList).add_user(u)
+                        self.app.user_list += [u]
 
             case "/channels":
                 data = await self.app.server.CHANNEL_LIST_PRO()
@@ -224,10 +249,7 @@ class ChatMessageBar(Widget):
 
             case "/help":
                 chat.add_message("System",
-                    "/disconnect | /username <name> | /whoami | /whois <user> | "
-                    "/userlist | /channels | /join <channel> | /leave <channel> | "
-                    "/create <channel> <description=optional>| /msg <user> <message> | /info <channel>|"
-                    "/msgChannel <channel> <message>"
+                    server_help_msg
                 )
 
             case _:
@@ -235,6 +257,7 @@ class ChatMessageBar(Widget):
            
 
 class ChatScreen(VerticalScroll):
+    global active_chatScreen
     DEFAULT_CSS = """
     ChatMessages {
         height: 1fr;
@@ -242,14 +265,21 @@ class ChatScreen(VerticalScroll):
     """
 
     def compose(self) -> ComposeResult:
-        yield ChatMessage("server","Hi")
+        yield ChatMessage("Current chat with","Server")
+        yield ChatMessage("Server",server_help_msg)
+        #self.add_message("Server",server_help_msg)
         self.scroll_end()
     
     def add_message(self, username: str, message: str):
         self.mount(ChatMessage(username, message))
-        self.scroll_end()  # scroll to latest message
+        self.scroll_end()  # scroll to latest msg
     def clear_messages(self) -> None:
         self.query(ChatMessage).remove()
+        
+ 
+        
+        
+
     
         
         
@@ -385,6 +415,9 @@ class LayoutApp(App):
         super().__init__()
         self.server = Manager()
         self.message_queue = []
+        self.channel_list = []
+        self.user_list = []
+        self.active_chat = "Server"
     
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -411,7 +444,12 @@ class LayoutApp(App):
         #logging.debug(f"callback triggered, current screen: {self.screen.id}")
         self.call_later(self._update_ui, data)
 
+    
+    
+    
+    
     def _update_ui(self, data: dict) -> None:
+        
         try:
             #logging.debug(f"Current screen: {self.screen}")
             #logging.debug(f"Screen id: {self.screen.id}")
@@ -425,6 +463,24 @@ class LayoutApp(App):
             message = data.get("message", str(data))
             if data["response_type"] == 24:
                 message = "ping successful"
+            if data["response_type"] == 35:
+        
+                for u in data["users"]:
+                    if u not in self.app.user_list:
+                        
+                        self.screen.query_one(ChatList).add_user(u)
+                        self.app.user_list += [u]
+                        
+                for u in self.app.user_list:
+                    if u not in data["users"]:
+                        
+                        self.screen.query_one(ChatList).remove_user(u)
+                        self.app.user_list.remove(u)
+                    
+                
+                        
+                    
+            
             chat_screen.add_message(username, message)
         except Exception as e:
             logging.debug(f"UI update error: {e}")

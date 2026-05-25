@@ -4,9 +4,6 @@ import concurrent
 import msgpack # Install with: pip install msgpack
 import socket
 import random
-from channel_msg import *
-from user_messages import *
-from session_msg import *
 #from classes import connection
 from classes import *
 import sys
