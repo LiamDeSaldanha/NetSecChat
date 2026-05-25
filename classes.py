@@ -555,7 +555,7 @@ class Manager:
             print(f"Error: \"{error}\"")
             
         return data
-    async def whosi(self,username):
+    async def whois(self,username):
         data= {
             "request_type":10,
             "username":username

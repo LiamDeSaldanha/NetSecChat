@@ -113,7 +113,7 @@ async def handleInput():
             identity = await loop.run_in_executor(None, input, "It seems you're curious. Who are we spying on?\n")
             
             #identity = input (f"It seems you're curious. Who are we spying on?\n")
-            data = await server.whosis(identity)
+            data = await server.whois(identity)
         
         if keyboard =="7":
             channel_name = await loop.run_in_executor(None, input, "Channel name:\n")
