@@ -2,16 +2,20 @@ import msgpack # Install with: pip install msgpack
 import socket
 import random
 import asyncio
+import time
 #from channel_msg import *
+from encryption import *
 from user_messages import *
 from session_msg import *
-
+from dotenv import load_dotenv
+import os
 RED     = "\033[91m"
 GREEN   = "\033[92m"
 YELLOW  = "\033[93m"
 BLUE    = "\033[94m"
 RESET   = "\033[0m"
-
+import logging
+logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 #TODO
 class Connection:
     
@@ -23,13 +27,19 @@ class Connection:
         self.listening = True
         self.response = [0 for _ in range((37-22)+1)]
         self.session = None
+        self.initiator = None
+        self.on_message_received = None 
         
     def connect(self,incoming_data):
         data =  incoming_data
         data["request_handle"] = random.randint(0, 2**32 - 1)
         data = msgpack.packb(data)
+        if self.port == 51820:
+            data = self.initiator.create_wireguard_transport_message(data)
         self.sock.send(data)
-        data = self.sock.recv(4096)
+        data = self.sock.recv(1024)
+        if self.port == 51820:
+            data = self.initiator.handle_wireguard_response(data)
         data = msgpack.unpackb(data)
         self.session = data["session"]
         return data  
@@ -42,23 +52,54 @@ class Connection:
             data["session"] = self.session
         data["request_handle"] = random.randint(0, 2**32 - 1)
         new_data = msgpack.packb(data)
-        print(f"sending: {data}")
+        if self.port == 51820:
+            new_data = self.initiator.create_wireguard_transport_message(new_data)
+            
+        logging.debug(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
         loop = asyncio.get_event_loop()
         
-        #self.listening = False  # pause the listener
+        
         
         await loop.run_in_executor(None, self.sock.send, new_data)
-        #response = await loop.run_in_executor(None, self.sock.recv, 1024)
         
-        #self.listening = True  # resume listener
-        await asyncio.sleep(3)
-        print("response : ", self.response[data["request_type"]])
+        await asyncio.sleep(2)
+        info =self.response[data["request_type"]] 
+        logging.debug(f"{time.strftime('%X')} response : {info}" )
         if self.response[data["request_type"]] == 0:
             return {}
         return self.response[data["request_type"]]
+    
+    
+    
+    
+    async def send_wireguard(self, data):
+        
+        new_data = data if isinstance(data, bytes) else msgpack.packb(data)
+        print(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
+        self.sock.send(new_data)
+        print("sent: ", new_data)
+        
+        # Enable response receiving
+        loop = asyncio.get_event_loop()
+        response_data = await loop.run_in_executor(None, self.sock.recv, 1024)
+        # Don't unpack if response is raw binary (WireGuard format)
+        if response_data[:1] == b'\x02':  # WireGuard Message 2
+            print(f"{time.strftime('%X')} response: {response_data}")
+        else:
+            response_data = msgpack.unpackb(response_data)
+            print(f"{time.strftime('%X')} response: {response_data}")
+        return response_data
+        
+        
     #TODO
     async def disconnect(self,data):
         data = await self.send(data)
+        if data["response_type"] == 23:
+            
+            print("listening set to false")
+            self.listening = False
+        print("not listening set to false")
+        
         
         return data
     async def listen(self):
@@ -66,13 +107,19 @@ class Connection:
         while self.listening:
             
             data = await loop.run_in_executor(None, self.sock.recv, 1024)
+            if self.port == 51820:
+                data = self.initiator.handle_wireguard_response(data)
+            
             data = msgpack.unpackb(data)
-            print(f"Listener: {data}")
-            if data["response_type"] == 23:
-                self.listening = False
+            logging.debug(f"{GREEN}{time.strftime('%X')} Listener: {data}{RESET}")
+            
                 
             self.response[data["response_type"]-21] = data
-        
+            
+            if self.on_message_received:
+                self.on_message_received(data)
+            else:
+                logging.debug(f"{RED} Listener callback not set {RESET}")
             
                 
         
@@ -95,6 +142,7 @@ class Manager:
         self.username = None
         self.channels = []
         self.connection = None
+        self.on_message_received = None
         
     def setConnectionType(self,type):
         if type == "cleartext":
@@ -113,6 +161,8 @@ class Manager:
        
     def send(self,data):
         return self.connection.send(data)
+    def send_wireguard(self,data):
+        return self.connection.send_wireguard(data)
     
     
     
@@ -269,23 +319,80 @@ class Manager:
     
     #! Session Messages
     def connect(self):
-        data= {
-            "request_type":1
-        } 
-        data = self.connection.connect(data)
-        print(f"send protocol: {data}")
-        response_type = data["response_type"]
-        if response_type ==22:
-            print(f"connected")
-            self.useranme = data["username"]
-            print(f"username set to {self.useranme}")
-        else:
-            error = data["error"]
-            print(f"Error: \"{error}\"")
+        print(self.connection.port)
+        if self.connection.port == 51825:
             
-        return data
         
+            data= {
+                "request_type":1
+            } 
+            data = self.connection.connect(data)
+            print(f"send protocol: {data}")
+            response_type = data["response_type"]
+            if response_type ==22:
+                print(f"connected")
+                self.useranme = data["username"]
+                print(f"username set to {self.useranme}")
+            else:
+                error = data["error"]
+                print(f"Error: \"{error}\"")
+            logging.debug(data)    
+            return data
+        elif self.connection.port == 51820:
+            
+            
+            
+            load_dotenv()
+            my_static_private = os.getenv('my_static_private')
+            my_static_private = base64.b64decode(my_static_private) #b'\x99x\x93eP\xdd\xb7h\xd5dJ\xc7\xa5~\x83\xbdX\x04M\xe29\x15\xe2\xf1\xe8\xd8VFk0\xf8\xa1'
+            my_static_public  = bytes(nacl.public.PrivateKey(my_static_private).public_key)
+
+            print("my_static_private: ",my_static_private)
+            print("my_static_public: ",my_static_public)
+            self.connection.initiator  = Initiator(my_static_public,my_static_private)
+            data = self.connection.initiator.new_handshake()
+            print(f"data {data}")
+            binary_msg = self.serialize_message_1(data)
+            print(f"binray {binary_msg}")
+            self.connection.sock.send(binary_msg)
+            response = self.connection.sock.recv(1024)
+            self.connection.initiator.process_response(response)
         
+            
+            data= {
+                "request_type":1
+            } 
+            data = self.connection.connect(data)
+            print(f"send protocol: {data}")
+            response_type = data["response_type"]
+            if response_type ==22:
+                print(f"connected")
+                self.useranme = data["username"]
+                print(f"username set to {self.useranme}")
+            else:
+                error = data["error"]
+                print(f"Error: \"{error}\"")
+            logging.debug(data)    
+                
+            return data
+            
+            
+            
+            
+        elif self.connection.port == 51821:
+            pass
+        
+    def serialize_message_1(self,msg_dict):
+        return (
+            msg_dict["type"] +
+            msg_dict["reserved"] +
+            msg_dict["sender"].to_bytes(4, 'little') +
+            msg_dict["ephemeral"] +
+            msg_dict["static"] +
+            msg_dict["timestamp"] +
+            msg_dict["mac1"] +
+            msg_dict["mac2"]
+        )      
     async def ping(self):
         data= {
             "request_type":3
@@ -294,7 +401,7 @@ class Manager:
         data = await self.connection.send(data)
         response_type = data["response_type"]
         if response_type ==24:
-            print(f"{RED}ping{RESET}")
+            print(f"{RED}ping succesful{RESET}")
         else:
             error = data["error"]
             print(f"Error: \"{error}\"")
@@ -305,6 +412,7 @@ class Manager:
         while self.connection.listening:
             await self.ping()
             await asyncio.sleep(30)
+        print("pinging stopped")
     
     async def disconnect(self):
         data= {
@@ -328,8 +436,9 @@ class Manager:
     
     
     async def listen(self):
-        print("listner started")
+        print(f"{GREEN}listner started {RESET}")
         await self.connection.listen()
+        print("listener closed")
         
      
      # Todo not needed    
