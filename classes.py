@@ -134,7 +134,7 @@ class Connection:
     
 class User:
     def __init__(self,name):
-        self.useranme = name
+        self.username = name
         self.my_channels = []
         pass
     def channel_msg(self):
@@ -163,9 +163,9 @@ class Manager:
         
         
     def setUser(self,username):
-        self.useranme = username
+        self.username = username
     def getUsername(self):
-        return self.useranme
+        return self.username
     
        
     def send(self,data):
@@ -344,8 +344,8 @@ class Manager:
             response_type = data["response_type"]
             if response_type ==22:
                 print(f"connected")
-                self.useranme = data["username"]
-                print(f"username set to {self.useranme}")
+                self.username = data["username"]
+                print(f"username set to {self.username}")
             else:
                 error = data["error"]
                 print(f"Error: \"{error}\"")
@@ -381,8 +381,8 @@ class Manager:
             response_type = data["response_type"]
             if response_type ==22:
                 print(f"connected")
-                self.useranme = data["username"]
-                print(f"username set to {self.useranme}")
+                self.username = data["username"]
+                print(f"username set to {self.username}")
             else:
                 error = data["error"]
                 print(f"Error: \"{error}\"")
@@ -436,8 +436,8 @@ class Manager:
             response_type = data["response_type"]
             if response_type ==22:
                 print(f"connected")
-                self.useranme = data["username"]
-                print(f"username set to {self.useranme}")
+                self.username = data["username"]
+                print(f"username set to {self.username}")
             else:
                 error = data["error"]
                 print(f"Error: \"{error}\"")
@@ -532,6 +532,7 @@ class Manager:
         response_type = data["response_type"]
         if response_type ==34:
             print(f"set username")
+            self.username = username
         else:
             error = data["error"]
             print(f"Error: \"{error}\"")

@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.containers import HorizontalScroll, VerticalScroll,Container
-from textual.screen import Screen
+from textual.screen import Screen, ModalScreen
 from textual.widgets import Placeholder,Header,Footer
 from textual.widget import Widget
 from textual.reactive import reactive
@@ -146,6 +146,35 @@ class ChatMessageBar(Widget):
         input_widget.value = ""
         if msg:
             await self.handle_input(msg)
+
+    def _format_list(self, title: str, items: list) -> str:
+        if not items:
+            return f"{title}: (none)"
+        return f"{title} ({len(items)}): " + ", ".join(str(i) for i in items)
+
+    def _format_payload(self, data: dict, default_message: str = "OK") -> str:
+        if not isinstance(data, dict):
+            return str(data)
+        if data.get("error"):
+            return f"Error: {data['error']}"
+
+        hidden_keys = {
+            "response_type",
+            "request_type",
+            "request_handle",
+            "response_handle",
+            "session",
+        }
+        payload = {k: v for k, v in data.items() if k not in hidden_keys}
+        if not payload:
+            return default_message
+
+        lines = []
+        for key, value in payload.items():
+            if isinstance(value, list):
+                value = ", ".join(str(i) for i in value) if value else "(none)"
+            lines.append(f"{key}: {value}")
+        return "\n".join(lines)
     
             
             
@@ -154,6 +183,12 @@ class ChatMessageBar(Widget):
     async def handle_input(self, msg: str) -> None:
         chat = self.screen.query_one(ChatScreen)
 
+        if self.app.pending_channel_name:
+            channel_name = self.app.pending_channel_name
+            self.app.pending_channel_name = None
+            await self.app.server.CHANNEL_CREATE(channel_name, msg)
+            chat.add_message("Server", f"Channel {channel_name} created")
+            return
         
 
         # Commands
@@ -191,33 +226,44 @@ class ChatMessageBar(Widget):
 
             case "/username":
                 if len(parts) > 1:
-                    await self.app.server.set_username(parts[1])
-                    chat.add_message("Server", f"Username changed to {parts[1]}")
+                    new_username = parts[1]
+                    current_username = self.app.server.getUsername()
+                    if new_username == current_username:
+                        chat.add_message("Server", "Error: new username matches current username")
+                    else:
+                        await self.app.server.set_username(new_username)
+                        chat.add_message("Server", f"Username changed to {new_username}")
                 else:
                     chat.add_message("Server", "Usage: /username <name>")
 
             case "/whoami":
                 data = await self.app.server.whoami()
-                chat.add_message("Server", str(data))
+                chat.add_message("Server", self._format_payload(data, "Whoami complete"))
 
             case "/whois":
                 if len(parts) > 1:
                     data = await self.app.server.whois(parts[1])
-                    chat.add_message("Server", str(data))
+                    chat.add_message("Server", self._format_payload(data, "Whois complete"))
                 else:
                     chat.add_message("Server", "Usage: /whois <username>")
 
             case "/userlist":
                 data = await self.app.server.user_list_pro()
-                chat.add_message("Server", str(data))
+                chat.add_message("Server", self._format_list("Users", data))
+                current_username = self.app.server.getUsername()
                 for u in data:
+                    if u == current_username:
+                        continue
                     if u not in self.app.user_list:
                         self.screen.query_one(ChatList).add_user(u)
                         self.app.user_list += [u]
+                #if current_username in self.app.user_list:
+                #    self.screen.query_one(ChatList).remove_user(current_username, user_types[1])
+                #    self.app.user_list.remove(current_username)
 
             case "/channels":
                 data = await self.app.server.CHANNEL_LIST_PRO()
-                chat.add_message("Server", str(data))
+                chat.add_message("Server", self._format_list("Channels", data))
 
             case "/join":
                 if len(parts) > 1:
@@ -240,10 +286,10 @@ class ChatMessageBar(Widget):
                     if len(sub) == 2:
                         
                         await self.app.server.CHANNEL_CREATE(sub[0],sub[1])
-                        chat.add_message("Server", f"Enter description for {parts[1]}:")
+                        chat.add_message("Server", f"Channel {sub[0]} created")
                     elif len(sub)==1:
-                        await self.app.server.CHANNEL_CREATE(sub[0],"")
-                        chat.add_message("Server", f"Enter description for {parts[1]}:")
+                        self.app.pending_channel_name = sub[0]
+                        chat.add_message("Server", f"Enter description for {sub[0]}:")
                         
                     else:
                         chat.add_message("Server", "Usage: /create <channel>")
@@ -263,7 +309,8 @@ class ChatMessageBar(Widget):
 
             case "/info":
                 if len(parts) > 1:
-                    await self.app.server.CHANNEL_INFO(parts[1])
+                    data = await self.app.server.CHANNEL_INFO(parts[1])
+                    chat.add_message("Server", self._format_payload(data, "Channel info"))
                 else:
                     chat.add_message("Server", "Usage: /info <channel>")
             case "/msgchannel":
@@ -391,6 +438,50 @@ class ChatMessage(Widget):
             yield Label(f"[bold]{self.username}[/bold]: {self.message}", markup=True)
 
 
+#AI used to help make the notification modal screen
+class NotificationModal(ModalScreen):
+    DEFAULT_CSS = """
+    NotificationModal {
+        align: center middle;
+    }
+    #modal {
+        width: 60;
+        height: auto;
+        padding: 2;
+        background: $panel;
+        border: round $warning;
+    }
+    #modal_buttons {
+        height: auto;
+    }
+    #modal_buttons Button {
+        width: 100%;
+        margin-top: 1;
+    }
+    """
+
+    def __init__(self, title: str, body: str, chat_name: str, chat_type: str):
+        super().__init__()
+        self.title = title
+        self.body = body
+        self.chat_name = chat_name
+        self.chat_type = chat_type
+
+    def compose(self) -> ComposeResult:
+        with Container(id="modal"):
+            yield Label(f"[bold]{self.title}[/bold]", markup=True)
+            yield Label(self.body)
+            with Container(id="modal_buttons"):
+                yield Button("Jump to chat", id="jump")
+                yield Button("OK", id="ok")
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ok":
+            self.app.pop_screen()
+        elif event.button.id == "jump":
+            self.app.pop_screen()
+            await self.app.open_chat(self.chat_name, self.chat_type)
+
 
 class ConnectionScreen(Screen):
     DEFAULT_CSS = """
@@ -415,17 +506,24 @@ class ConnectionScreen(Screen):
             yield Label("Welcome to NetSecChat", id="title")
             yield Button("Cleartext", id="cleartext")
             yield Button("Encrypted", id="encrypted")
+            yield Button("Cookie(Mac2)", id = "cookie")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
+        port = 0
         if event.button.id == "cleartext":
             self.app.server.setConnectionType("cleartext")
+            port = 51825
         elif event.button.id == "encrypted":
             self.app.server.setConnectionType("encrypted")
+            port = 51820
+        elif event.button.id == "cookie":
+            self.app.server.setConnectionType("cookie")
+            port = 51821
         self.app.server.connect()
         self.app.server.connection.on_message_received = self.app.handle_incoming
         self.app.server.on_message_received = self.app.handle_incoming
         await self.app.push_screen(UserScreen())
-        self.notify("Connected to server!")
+        self.notify(f"Connected to server on port {port}!")
         
        
         asyncio.create_task(self.app.server.start_ping_loop())
@@ -450,6 +548,7 @@ class LayoutApp(App):
         self.user_list = {}
         self.server_messages = {}
         self.active_chat = "Server"
+        self.pending_channel_name = None
     
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -472,6 +571,29 @@ class LayoutApp(App):
         
     def on_ready(self) -> None:
         self.push_screen(ConnectionScreen())
+
+    async def open_chat(self, chat_name: str, chat_type: str) -> None:
+        self.active_chat = chat_name
+        chat = self.screen.query_one(ChatScreen)
+        chat.clear_messages()
+        chat.add_message("Current chat with", chat_name)
+        if chat_name == "Server":
+            chat.add_message("Help Menu", server_help_msg)
+            return
+
+        try:
+            if chat_type == user_types[2]:
+                await self.server.CHANNEL_JOIN(chat_name)
+                history = self.channel_list.get(chat_name, [])
+            elif chat_type == user_types[1]:
+                history = self.user_list.get(chat_name, [])
+            else:
+                history = []
+
+            for username, message in history:
+                chat.add_message(username, message)
+        except Exception as e:
+            logging.debug(f"UI update error: {e}")
     def handle_incoming(self, data: dict) -> None:
         #logging.debug(f"callback triggered, current screen: {self.screen.id}")
         self.call_later(self._update_ui, data)
@@ -497,10 +619,13 @@ class LayoutApp(App):
             logging.debug(data["response_type"])    
             message = data.get("message", str(data))
             if data["response_type"] == 24:
-                message = "ping successful"
+                # Skip UI updates for ping responses.
+                return
             if data["response_type"] == 35:
-        
+                current_username = self.app.server.getUsername()
                 for u in data["users"]:
+                    if u == current_username:
+                        continue
                     if u not in self.app.user_list.copy().keys():
                         
                         self.screen.query_one(ChatList).add_user(u)
@@ -512,6 +637,11 @@ class LayoutApp(App):
                         
                         self.screen.query_one(ChatList).remove_user(u,user_types[1])
                         del self.app.user_list[u]
+                if current_username in self.app.user_list:
+                    self.screen.query_one(ChatList).remove_user(current_username, user_types[1])
+                    del self.app.user_list[current_username]
+                # Skip UI message updates for user list responses.
+                return
                 
             if data["response_type"] == 26:
         
@@ -527,25 +657,45 @@ class LayoutApp(App):
                         
                         self.screen.query_one(ChatList).remove_user(u,user_types[2])
                         del self.app.channel_list[u]
+                # Skip UI message updates for channel list responses.
+                return
                     
                 
             if data["response_type"] == 30   :
-                
-                if username == self.active_chat and data["response_handle"] == None:
-                    channel_user_name =  data.get("username")
-                    chat_screen.add_message(channel_user_name, message)
+                if data["response_handle"] is None:
+                    channel_user_name = data.get("username")
+                    if username not in self.app.channel_list:
+                        self.app.channel_list[username] = []
                     self.app.channel_list[username].append((channel_user_name, message))
-                    logging.debug(f"Channel list {self.app.channel_list}")
-                    logging.debug(f"User list {self.app.user_list}")
+                    if username == self.active_chat:
+                        chat_screen.add_message(channel_user_name, message)
+                        logging.debug(f"Channel list {self.app.channel_list}")
+                        logging.debug(f"User list {self.app.user_list}")
+                    else:
+                        self.push_screen(NotificationModal(
+                            f"Channel message: {username}",
+                            f"{channel_user_name}: {message}",
+                            username,
+                            user_types[2]
+                        ))
 
                     
                     
             elif  data["response_type"] == 33  :
-                
-                if username == self.active_chat and data["response_handle"] == None:
-                    chat_screen.add_message(username, message)
+                if data["response_handle"] is None:
+                    if username not in self.app.user_list:
+                        self.app.user_list[username] = []
                     self.app.user_list[username].append((username, message))
-                    logging.debug(self.app.user_list)
+                    if username == self.active_chat:
+                        chat_screen.add_message(username, message)
+                        logging.debug(self.app.user_list)
+                    else:
+                        self.push_screen(NotificationModal(
+                            f"New message from {username}",
+                            message,
+                            username,
+                            user_types[1]
+                        ))
                    
             else:
                 if username == self.active_chat:
