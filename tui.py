@@ -1,3 +1,5 @@
+from typing import Text
+
 from textual.app import App, ComposeResult
 from textual.containers import HorizontalScroll, VerticalScroll,Container
 from textual.screen import Screen, ModalScreen
@@ -23,11 +25,79 @@ logging.basicConfig(filename='debug.log', level=logging.DEBUG,filemode='w')
 user_types = ["Server","User","Channel"]
 server_help_msg = "/disconnect | /username <name> | /whoami | /whois <user> | /userlist | /channels | /join <channel> | /leave <channel> | /create <channel> <description=optional>| /msg <user> <message> | /info <channel>|/msgChannel <channel> <message>"
 
+
+
+
+class ChannelButton(Button):
+    DEFAULT_CSS = """
+    ChannelButton {
+        width: 100%;
+       
+        background: $primary;
+        color: $text;
+        border: none;
+        text-style: bold;
+        margin-top: 1;
+        dock: bottom;
+    }
+
+   
+
+    
+
+    ChannelButton.-joined {
+        background: $error;
+    }
+
+    ChannelButton.-joined:hover {
+        background: $error-lighten-2;
+    }
+    """
+   
+    def __init__(self, user_name: str, user_type: str):
+        super().__init__(label="Join")  
+        self.joined = False
+        self.user_name = user_name
+        self.user_type = user_type
+        if user_name in self.app.my_created_channels:
+            self.label = "Leave"
+            self.joined = True
+            self.add_class("-joined")
+         
+    
+    
+    async def on_click(self,event) -> None:
+   
+        
+        try:   
+            if self.user_type == user_types[2]:
+                
+                if not self.joined:
+                    data = await self.app.server.CHANNEL_JOIN(self.user_name)
+                   # if data["response_type"] ==20 and data["error"] == 'Already in channel':
+                    #    pass
+                    self.joined = True
+                    self.add_class("-joined")   
+                    
+                else:
+                    await self.app.server.CHANNEL_LEAVE(self.user_name)
+                    await self.app.server.CHANNEL_LIST_PRO()
+                    
+                    self.label = Text("Join")
+                    self.joined = False
+                    self.remove_class("-joined")
+               
+                        
+        except Exception as e:
+            logging.debug(f"UI update error: {e}")
+
+
+
 class User(Widget):
     
     DEFAULT_CSS = """
     User {
-        height: 7;
+        height: auto;
         border: round $primary;
         margin: 1;
         background: $panel;
@@ -38,25 +108,37 @@ class User(Widget):
         super().__init__()
         self.label = label
         self.type = type
+        
     
     def compose(self):
         yield Label(self.type+": "+self.label)
-    async def on_click(self) -> None:
-        self.app.active_chat =self.label
-        chat = self.app.screen.query_one(ChatScreen)
-        chat.clear_messages()
-        chat.add_message("Current chat with",self.label)
-        if self.label == "Server":
-        #yield ChatMessage("Server",server_help_msg)
-            
-            chat.add_message("Help Menu",server_help_msg)
+        if self.type == "Channel":
+            yield ChannelButton(user_name=self.label, user_type=self.type)
+    
+    async def on_click(self, event) -> None:
+        try:
+            if event.control  is not self:
+                return
         
-        try:   
+            self.app.active_chat =self.label
+            chat = self.app.screen.query_one(ChatScreen)
+            chat.clear_messages()
+            chat.add_message("Current chat with",self.label)
+            if self.label == "Server":
+       
+            
+                chat.add_message("Help Menu",server_help_msg)
+        
+        
+           
             if self.type == user_types[2]:
-                await self.app.server.CHANNEL_JOIN(self.label)
+                
+                
                 history = self.app.channel_list.get(self.label, [])
+                
                 for username, message in history:
                     chat.add_message(username, message)
+                
                 
             if self.type == user_types[1]:  
                 
@@ -69,6 +151,7 @@ class User(Widget):
                         chat.add_message(username, message)
                     else:
                         chat.add_message(username, message)
+                
                         
                         
         except Exception as e:
@@ -83,19 +166,74 @@ class MyInput(Input):
     
     DEFAULT_CSS = """
     MyInput {
-        width: 80%;
+        width: 1fr;
         height: 3;
     }
     """
     def compose(self):
         return super().compose()
+
+class RefreshButton(Button):
+    DEFAULT_CSS = """
+    RefreshButton {
+        width: 1fr;
+    }
+    """
+    def __init__(self):
+        super().__init__(label = "Refresh")
+    async def _on_click(self, event):
+        
+        await self.app.server.user_list_pro()
+        await asyncio.sleep(1)
+        await self.app.server.CHANNEL_LIST_PRO()
+        
+        
+        
+class DisconnectButton(Button):
+    DEFAULT_CSS = """
+    DisconnectButton {
+        width: 1fr;
+    }
+    """
+    def __init__(self):
+        super().__init__(label = "Disconnect")
+        
+    def _on_click(self, event):
+        self.app.action_quit();
+        
+class ChangeUsernameButton(Button):
+    DEFAULT_CSS = """
+    ChangeUsernameButton {
+        width: 1fr;
+    }
+    """
+    def __init__(self):
+        super().__init__(label = "Disconnect")
+        
+    def _on_click(self, event):
+        self.query_one(MyInput)
+        
+        
+class SettingPanel(Widget):
+    DEFAULT_CSS = """
+    SettingPanel {
+        dock: bottom;
+        height: auto;
+        align: center middle;
+        background: $boost;
+    }
+    """
     
+    def compose(self):
+        
+        yield RefreshButton()  
+        yield DisconnectButton()
 
 class ChatList(VerticalScroll):
     DEFAULT_CSS = """
     ChatList {
-        
         background: $boost;
+        height: 1fr;
     }
     """
 
@@ -110,15 +248,7 @@ class ChatList(VerticalScroll):
                 user.remove()
         
             
-            
-class Name(Widget):
-    """Generates a greeting."""
 
-    who = reactive("name")
-
-    def render(self) -> str:
-        return f"Hello, {self.who}!"
-    
     
 class ChatMessageBar(Widget):
     DEFAULT_CSS = """
@@ -220,9 +350,9 @@ class ChatMessageBar(Widget):
 
         match cmd:
             case "/disconnect":
-                data = await self.app.server.disconnect()
-                chat.add_message("Server", data.get("message", "Disconnected"))
-                self.app.exit()
+                #data = await self.app.server.disconnect()
+                #chat.add_message("Server", data.get("message", "Disconnected"))
+                self.app.action_quit();
 
             case "/username":
                 if len(parts) > 1:
@@ -233,6 +363,7 @@ class ChatMessageBar(Widget):
                     else:
                         await self.app.server.set_username(new_username)
                         chat.add_message("Server", f"Username changed to {new_username}")
+                        self.app.sub_title = new_username
                 else:
                     chat.add_message("Server", "Usage: /username <name>")
 
@@ -275,8 +406,9 @@ class ChatMessageBar(Widget):
 
             case "/leave":
                 if len(parts) > 1:
-                    await self.app.server.CHANNEL_LEAVE(parts[1])
+                    self.app.server.CHANNEL_LEAVE(parts[1])
                     chat.add_message("Server", f"Left channel {parts[1]}")
+                    
                 else:
                     chat.add_message("Server", "Usage: /leave <channel>")
 
@@ -286,11 +418,12 @@ class ChatMessageBar(Widget):
                     if len(sub) == 2:
                         
                         await self.app.server.CHANNEL_CREATE(sub[0],sub[1])
+                        self.app.my_created_channels.append(sub[0])
                         chat.add_message("Server", f"Channel {sub[0]} created")
                     elif len(sub)==1:
                         self.app.pending_channel_name = sub[0]
                         chat.add_message("Server", f"Enter description for {sub[0]}:")
-                        
+                        self.app.my_created_channels.append(sub[0])
                     else:
                         chat.add_message("Server", "Usage: /create <channel>")
                 else:
@@ -336,9 +469,12 @@ class ChatMessageBar(Widget):
 class ChatScreen(VerticalScroll):
     global active_chatScreen
     DEFAULT_CSS = """
-    ChatMessages {
+    ChatScreen {
         height: 1fr;
+        background: $boost;
     }
+    
+    
     """
 
     def compose(self) -> ComposeResult:
@@ -374,20 +510,37 @@ class Chat(Container):
         yield ChatScreen()
         yield ChatMessageBar()       
 
+class Chat2(Container):
+    DEFAULT_CSS = """
+    Chat2 {
+        height: 100%;
+    }
+    """
+    
+
+
+    
+    def compose(self):
+        yield ChatList()
+        yield SettingPanel()  
+
+
+
 
 
 class UserScreen(Screen):
     
-    DEFAULT_CSS = """"""
+    
     
     def compose(self) -> ComposeResult:
         yield Header(id="Header",show_clock=True)
         yield Footer(id="Footer")
         with HorizontalScroll():
-            yield ChatList()
+            yield Chat2()
             yield Chat()
     
     def on_mount(self) -> None:
+        
         for data in self.app.message_queue:
             chat = self.query_one(ChatScreen)
             username = data.get("username", "Server")
@@ -519,10 +672,13 @@ class ConnectionScreen(Screen):
         elif event.button.id == "cookie":
             self.app.server.setConnectionType("cookie")
             port = 51821
-        self.app.server.connect()
+        data =  self.app.server.connect()
+
+        
         self.app.server.connection.on_message_received = self.app.handle_incoming
         self.app.server.on_message_received = self.app.handle_incoming
         await self.app.push_screen(UserScreen())
+        self.app.sub_title = data["username"]
         self.notify(f"Connected to server on port {port}!")
         
        
@@ -543,12 +699,14 @@ class LayoutApp(App):
     def __init__(self):
         super().__init__()
         self.server = Manager()
+        self.my_created_channels = []
         self.message_queue = []
         self.channel_list = {}
         self.user_list = {}
         self.server_messages = {}
         self.active_chat = "Server"
         self.pending_channel_name = None
+        self.username=""
     
     def action_toggle_dark(self) -> None:
         """An action to toggle dark mode."""
@@ -560,6 +718,10 @@ class LayoutApp(App):
         # Cancel all background tasks
         
         self.exit()
+    
+    def on_mount(self) -> None:
+        self.title = "Your username"
+        self.sub_title = self.username
     
     async def on_unmount(self) -> None:
         try:
