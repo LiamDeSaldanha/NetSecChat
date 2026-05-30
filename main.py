@@ -86,8 +86,11 @@ async def handleInput():
             new_username = await loop.run_in_executor(None, input, "Enter you new username: ")
             
             #new_username = input(f"Enter you new username: ")
-            
-            data = await server.set_username(new_username)
+            current_username = server.getUsername()
+            if new_username == current_username:
+                print("Error: new username matches current username")
+            else:
+                data = await server.set_username(new_username)
             
             
 
