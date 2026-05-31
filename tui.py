@@ -26,19 +26,21 @@ user_types = ["Server","User","Channel"]
 server_help_msg = "/disconnect | /username <name> | /whoami | /whois <user> | /userlist | /channels | /join <channel> | /leave <channel> | /create <channel> <description=optional>| /msg <user> <message> | /info <channel>|/msgChannel <channel> <message>"
 
 
+####### AI Declaration ##################
+# Ai was used for most of the CSS
+# AI was used to debug textual errors such as screens not being found and specific methods not existing for soem protocols lile label for a input
 
 
 class ChannelButton(Button):
     DEFAULT_CSS = """
     ChannelButton {
         width: 100%;
-       
+        height: auto;
         background: $primary;
         color: $text;
         border: none;
         text-style: bold;
         margin-top: 1;
-        dock: bottom;
     }
 
    
@@ -59,10 +61,12 @@ class ChannelButton(Button):
         self.joined = False
         self.user_name = user_name
         self.user_type = user_type
+        
         if user_name in self.app.my_created_channels:
             self.label = "Leave"
             self.joined = True
             self.add_class("-joined")
+            
          
     
     
@@ -76,6 +80,8 @@ class ChannelButton(Button):
                     data = await self.app.server.CHANNEL_JOIN(self.user_name)
                    # if data["response_type"] ==20 and data["error"] == 'Already in channel':
                     #    pass
+                    self.label = Text("Leave")
+                    
                     self.joined = True
                     self.add_class("-joined")   
                     
@@ -91,7 +97,46 @@ class ChannelButton(Button):
         except Exception as e:
             logging.debug(f"UI update error: {e}")
 
+class InfoChannelButon(Button):
+    DEFAULT_CSS = """
+    InfoChannelButon {
+        width: 100%;
+       
+        background: $primary;
+        color: $text;
+        border: none;
+        text-style: bold;
+        margin-top: 1;
+    }
 
+    """
+   
+    def __init__(self, user_name: str):
+        super().__init__(label="Info")  
+        self.user_name = user_name
+    
+    async def on_click(self,event) -> None:
+   
+        try:
+            data = await self.app.server.CHANNEL_INFO(self.user_name)
+            if data["response_type"] != 20:
+
+                description = "description: " +data["description"]+"\n"
+                members = "members: " + ", ".join(data["members"]) + "\n"
+                channel ="channel name: " + data["channel"]+"\n"
+                
+                self.app.push_screen(ChannelInfoModal(
+                                    f"Channel Info",
+                                    channel+description+members,
+                                    "",
+                                    user_types[2]
+                                ))
+        except Exception as e:
+            logging.debug(f"UI update error: {e}") 
+                   
+               
+                        
+        
 
 class User(Widget):
     
@@ -114,6 +159,7 @@ class User(Widget):
         yield Label(self.type+": "+self.label)
         if self.type == "Channel":
             yield ChannelButton(user_name=self.label, user_type=self.type)
+            yield InfoChannelButon(user_name=self.label)
     
     async def on_click(self, event) -> None:
         try:
@@ -208,11 +254,33 @@ class ChangeUsernameButton(Button):
     }
     """
     def __init__(self):
-        super().__init__(label = "Disconnect")
+        super().__init__(label = "Change username")
         
     def _on_click(self, event):
-        self.query_one(MyInput)
+        self.app.push_screen(UsernameModal(
+                            f"System",
+                            "Change Username",
+                            "",
+                            user_types[1]
+                        ))
+
+
+class CreateChannelButton(Button):
+    DEFAULT_CSS = """
+    CreateChannelButton {
+        width: 1fr;
+    }
+    """
+    def __init__(self):
+        super().__init__(label = "Create Channel")
         
+    def _on_click(self, event):
+        self.app.push_screen(CreateChannelModal(
+                            f"System",
+                            "Channel created",
+                            "",
+                            user_types[1]
+                        ))     
         
 class SettingPanel(Widget):
     DEFAULT_CSS = """
@@ -227,6 +295,9 @@ class SettingPanel(Widget):
     def compose(self):
         
         yield RefreshButton()  
+        yield ChangeUsernameButton()
+        yield CreateChannelButton()
+        
         yield DisconnectButton()
 
 class ChatList(VerticalScroll):
@@ -261,7 +332,7 @@ class ChatMessageBar(Widget):
     def compose(self):
         with HorizontalScroll():
             yield MyInput(placeholder="Enter message...")
-            yield Button()
+            yield Button(label="Send")
     async def on_button_pressed(self) -> None:
         await self._send()
     
@@ -632,9 +703,151 @@ class NotificationModal(ModalScreen):
         if event.button.id == "ok":
             self.app.pop_screen()
         elif event.button.id == "jump":
-            self.app.pop_screen()
             await self.app.open_chat(self.chat_name, self.chat_type)
+            self.app.pop_screen()
+            
+            
+            
+#Adapted NotificationModal
+class UsernameModal(ModalScreen):
+    DEFAULT_CSS = """
+    UsernameModal {
+        align: center middle;
+    }
+    #modal {
+        width: 60;
+        height: auto;
+        padding: 2;
+        background: $panel;
+        border: round $warning;
+    }
+    #modal_buttons {
+        height: auto;
+    }
+    #modal_buttons Button {
+        width: 100%;
+        margin-top: 1;
+    }
+    """
 
+    def __init__(self, title: str, body: str, chat_name: str, chat_type: str):
+        super().__init__()
+        self.title = title
+        self.body = body
+        self.chat_name = chat_name
+        self.chat_type = chat_type
+
+    def compose(self) -> ComposeResult:
+        with Container(id="modal"):
+            yield Label(f"[bold]{self.title}[/bold]", markup=True)
+            yield Label(self.body)
+            with Container(id="modal_buttons"):
+                yield MyInput(placeholder="Enter new username", id="input")
+                yield Button("Send", id="ok")
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ok":
+            input_widget = self.query_one(MyInput)
+            new_username = input_widget.value.strip()
+            
+            data = await self.app.server.set_username(new_username)
+            if data["response_type"] != 20:
+                self.app.sub_title = data["new_username"]
+            else:
+                logging.debug("error changing username")
+            self.app.pop_screen()
+            
+class CreateChannelModal(ModalScreen):
+    DEFAULT_CSS = """
+    CreateChannelModal {
+        align: center middle;
+    }
+    #modal {
+        width: 60;
+        height: auto;
+        padding: 2;
+        background: $panel;
+        border: round $warning;
+    }
+    #modal_buttons {
+        height: auto;
+    }
+    #modal_buttons Button {
+        width: 100%;
+        margin-top: 1;
+    }
+    """
+
+    def __init__(self, title: str, body: str, chat_name: str, chat_type: str):
+        super().__init__()
+        self.title = title
+        self.body = body
+        self.chat_name = chat_name
+        self.chat_type = chat_type
+
+    def compose(self) -> ComposeResult:
+        with Container(id="modal"):
+            yield Label(f"[bold]{self.title}[/bold]", markup=True)
+            yield Label(self.body)
+            with Container(id="modal_buttons"):
+                yield MyInput(placeholder="Enter channel name", id="input1")
+                yield MyInput(placeholder="Enter description", id="input2")
+                yield Button("Send", id="ok")
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ok":
+            channel_name = self.query_one("#input1").value.strip()
+            description = self.query_one("#input2").value.strip()
+            
+            data = await self.app.server.CHANNEL_CREATE(channel_name,description)
+            if data["response_type"] != 20:
+            
+                self.app.my_created_channels.append(channel_name)
+            self.app.pop_screen()
+
+#Adapted NotificationModal
+class ChannelInfoModal(ModalScreen):
+    DEFAULT_CSS = """
+    ChannelInfoModal {
+        align: center middle;
+    }
+    #modal {
+        width: 60;
+        height: auto;
+        padding: 2;
+        background: $panel;
+        border: round $warning;
+    }
+    #modal_buttons {
+        height: auto;
+    }
+    #modal_buttons Button {
+        width: 100%;
+        margin-top: 1;
+    }
+    """
+
+    def __init__(self, title: str, body: str, chat_name: str, chat_type: str):
+        super().__init__()
+        self.title = title
+        self.body = body
+        self.chat_name = chat_name
+        self.chat_type = chat_type
+
+    def compose(self) -> ComposeResult:
+        with Container(id="modal"):
+            yield Label(f"[bold]{self.title}[/bold]", markup=True)
+            yield Label(self.body)
+            with Container(id="modal_buttons"):
+                yield Button("OK", id="ok")
+
+    async def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "ok":
+            self.app.pop_screen()
+            
+            
+
+        
 
 class ConnectionScreen(Screen):
     DEFAULT_CSS = """
@@ -734,7 +947,7 @@ class LayoutApp(App):
     def on_ready(self) -> None:
         self.push_screen(ConnectionScreen())
 
-    async def open_chat(self, chat_name: str, chat_type: str) -> None:
+    async def open_chat(self, chat_name: str, chat_type: str) -> None: #! broken
         self.active_chat = chat_name
         chat = self.screen.query_one(ChatScreen)
         chat.clear_messages()
@@ -767,6 +980,10 @@ class LayoutApp(App):
     def _update_ui(self, data: dict) -> None:
         
         try:
+            for screen in self.screen_stack:
+                if isinstance(screen, UserScreen):
+                    chat_screen = screen.query_one(ChatScreen)
+                    break
             #logging.debug(f"Current screen: {self.screen}")
             #logging.debug(f"Screen id: {self.screen.id}")
             #logging.debug(f"All screens: {self.screen_stack}")
@@ -860,11 +1077,32 @@ class LayoutApp(App):
                         ))
                    
             else:
-                if username == self.active_chat:
-                    chat_screen.add_message(username, message)
+                
+                    
+                if data["response_type"]== 28:
+                    message = data["username"] + " joined channel"
+                    if username == self.active_chat:
+                        chat_screen.add_message("Channel: ", message)
+                    self.app.channel_list[username].append(("Channel: ", message))
+                    
+                elif data["response_type"]== 29:
+                    message = data["username"] + " left channel"
+                    if username == self.active_chat:
+                        chat_screen.add_message("Channel: ", message)
+                    self.app.channel_list[username].append(("Channel: ", message))
+                elif data["response_type"]== 36:
+                    if  self.active_chat == "Server":
+                        chat_screen.add_message("Shakespear: ", message)
+                    self.app.channel_list[username].append(("Shakespear: ", message))
+                    
+                    
                 else:
-                    pass #! enable only for debugging
-                    #chat_screen.add_message(f"Not in current chat: {username}", message)
+                
+                    if  self.active_chat == username:
+                        #chat_screen.add_message(username, message)
+                        self.app.channel_list[username].append((username, message))
+                        
+                
                 
         except Exception as e:
             logging.debug(f"UI update error: {e}")

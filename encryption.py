@@ -14,7 +14,7 @@ import time
 SERVER_STATIC_PUBLIC_KEY=b'f,^\xc0Cb\xf3\x937\xbf\x11\x14"\xed\x13\x0b\x9f\xe7\xaf;\x94\xb0p\x13\xe1\x94\xdd\x85\xcf\x01\x0bC'
 
 #################### End of Constants #################
-####Personal
+
 
 
 """Used to generate secret"""
@@ -110,8 +110,8 @@ def timestamp():
     #t =1744366282.5143921
     secs = int(t) + 10 + 2**62
     nsecs = int((t % 1) * 1e6)
-    timestamp_ = secs.to_bytes(8,"big")+nsecs.to_bytes(4,"big")
-    return timestamp_
+    timestamp_ret = secs.to_bytes(8,"big")+nsecs.to_bytes(4,"big")
+    return timestamp_ret
 
 class Message:
     def __init__(self):
