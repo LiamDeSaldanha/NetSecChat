@@ -5,19 +5,16 @@ import asyncio
 import time
 #from channel_msg import *
 from encryption import *
-from dotenv import load_dotenv # to store secrets
-
+from dotenv import load_dotenv
 import os
-
-# Values for colour
 RED     = "\033[91m"
 GREEN   = "\033[92m"
 YELLOW  = "\033[93m"
 BLUE    = "\033[94m"
 RESET   = "\033[0m"
 import logging
-logging.basicConfig(filename='debug.log', level=logging.DEBUG)# for debugging
-#Connection class to maange socket
+logging.basicConfig(filename='debug.log', level=logging.DEBUG)
+#TODO
 class Connection:
     
     def __init__(self,ip,port):
@@ -31,7 +28,7 @@ class Connection:
         self.initiator = None
         self.on_message_received = None 
         
-    def connect(self,incoming_data):# handle port type aka encryption or cleartext session
+    def connect(self,incoming_data):
         data =  incoming_data
         data["request_handle"] = random.randint(0, 2**32 - 1)
         data = msgpack.packb(data)
@@ -48,7 +45,7 @@ class Connection:
     def getSession(self):
         return self.session
     
-    async def send(self, data):# sends and logs all data
+    async def send(self, data):
         if data["request_type"] != 1:
             data["session"] = self.session
         data["request_handle"] = random.randint(0, 2**32 - 1)
@@ -61,22 +58,22 @@ class Connection:
         
         
         
-        await loop.run_in_executor(None, self.sock.send, new_data)# send in new thread
+        await loop.run_in_executor(None, self.sock.send, new_data)
         
-        await asyncio.sleep(2)# wait a bit for response
+        await asyncio.sleep(2)
         info =self.response[data["request_type"]] 
-        logging.debug(f"{time.strftime('%X')} response : {info}" )# Add time for logging
+        logging.debug(f"{time.strftime('%X')} response : {info}" )
         if data["request_type"] == 12:
             logging.debug(f"{time.strftime('%X')} special case response : {self.response[0]}" )
             return self.response[0]
-        if self.response[data["request_type"]] == 0:# should be deny by default but forgot to change and worried it break stufff
+        if self.response[data["request_type"]] == 0:
             return {}
         return self.response[data["request_type"]]
     
     
     
     
-    async def send_wireguard(self, data):# wrap the packet in a wiregaurd transport layer
+    async def send_wireguard(self, data):
         
         new_data = data if isinstance(data, bytes) else msgpack.packb(data)
         print(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
@@ -96,7 +93,7 @@ class Connection:
         
         
     #TODO
-    async def disconnect(self,data):# disconenct from socket adn server
+    async def disconnect(self,data):
         data = await self.send(data)
         if data["response_type"] == 23:
             
@@ -106,7 +103,7 @@ class Connection:
         
         
         return data
-    async def listen(self):# cosntantly lsiten for message from sever in seperate thread
+    async def listen(self):
         loop = asyncio.get_event_loop()
         while self.listening:
             try: 
@@ -135,7 +132,7 @@ class Connection:
         
     
     
-class User:# not really used
+class User:
     def __init__(self,name):
         self.username = name
         self.my_channels = []
@@ -147,7 +144,7 @@ class User:# not really used
     def getMyChannels(self):
         pass
 
-class Manager:# used to manage protocol in tui and abstract detail 
+class Manager:
     def __init__(self):
         self.username = None
         self.channels = []
@@ -222,7 +219,7 @@ class Manager:# used to manage protocol in tui and abstract detail
         return data
 
     """CHANNEL_LIST_PRO"""
-    async def CHANNEL_LIST_PRO(self,offset=0):  # basically appends a list and repeatdedly calls channel list protocol
+    async def CHANNEL_LIST_PRO(self,offset=0):  
         i =0
         data =await self.CHANNEL_LIST(offset)
         channels = data["channels"]
@@ -334,7 +331,7 @@ class Manager:# used to manage protocol in tui and abstract detail
     
     
     #! Session Messages
-    def connect(self):# connection based on port selected in connection setup
+    def connect(self):
         print(self.connection.port)
         if self.connection.port == 51825:
             
@@ -459,7 +456,7 @@ class Manager:# used to manage protocol in tui and abstract detail
             msg_dict["mac1"] +
             msg_dict["mac2"]
         )      
-    async def ping(self):# send a ping to server
+    async def ping(self):
         data= {
             "request_type":3
             
@@ -475,7 +472,7 @@ class Manager:# used to manage protocol in tui and abstract detail
             
         return data
     
-    async def start_ping_loop(self):# repeatdely send pings and update channel list and userlist until app closes
+    async def start_ping_loop(self):
         while self.connection.listening:
             await self.ping()
             await self.user_list_pro()
@@ -486,7 +483,7 @@ class Manager:# used to manage protocol in tui and abstract detail
       
     
     
-    async def disconnect(self):# disconenct app
+    async def disconnect(self):
         data= {
             "request_type":2
         } 
@@ -507,7 +504,7 @@ class Manager:# used to manage protocol in tui and abstract detail
     
     
     
-    async def listen(self):# abstract detail of lsitening 
+    async def listen(self):
         print(f"{GREEN}listner started {RESET}")
         await self.connection.listen()
         print("listener closed")
@@ -562,7 +559,7 @@ class Manager:# used to manage protocol in tui and abstract detail
             print(f"Error: \"{error}\"")
             
         return data
-    async def user_list_pro(self,channel=None,offset=None):   # basically appends a list and repeatdedly calls user list protocol
+    async def user_list_pro(self,channel=None,offset=None):  
         i =0
         data = await self.user_list(channel,offset)
         res= data["users"]

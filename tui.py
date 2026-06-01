@@ -1,7 +1,7 @@
 from typing import Text
 
 from textual.app import App, ComposeResult
-from textual.containers import HorizontalScroll, VerticalScroll,Container
+from textual.containers import HorizontalScroll, VerticalScroll, Container, Horizontal
 from textual.screen import Screen, ModalScreen
 from textual.widgets import Placeholder,Header,Footer
 from textual.widget import Widget
@@ -258,7 +258,7 @@ class ChangeUsernameButton(Button):
         
     def _on_click(self, event):
         self.app.push_screen(UsernameModal(
-                            f"System",
+                            "",
                             "Change Username",
                             "",
                             user_types[1]
@@ -276,7 +276,7 @@ class CreateChannelButton(Button):
         
     def _on_click(self, event):
         self.app.push_screen(CreateChannelModal(
-                            f"System",
+                            "",
                             "Channel created",
                             "",
                             user_types[1]
@@ -671,7 +671,7 @@ class NotificationModal(ModalScreen):
     #modal {
         width: 60;
         height: auto;
-        padding: 2;
+        padding: 1;
         background: $panel;
         border: round $warning;
     }
@@ -703,8 +703,8 @@ class NotificationModal(ModalScreen):
         if event.button.id == "ok":
             self.app.pop_screen()
         elif event.button.id == "jump":
-            await self.app.open_chat(self.chat_name, self.chat_type)
             self.app.pop_screen()
+            await self.app.open_chat(self.chat_name, self.chat_type)
             
             
             
@@ -717,7 +717,7 @@ class UsernameModal(ModalScreen):
     #modal {
         width: 60;
         height: auto;
-        padding: 2;
+        padding: 1;
         background: $panel;
         border: round $warning;
     }
@@ -727,6 +727,9 @@ class UsernameModal(ModalScreen):
     #modal_buttons Button {
         width: 100%;
         margin-top: 1;
+    }
+    #cancel {
+        color: $error;
     }
     """
 
@@ -743,18 +746,44 @@ class UsernameModal(ModalScreen):
             yield Label(self.body)
             with Container(id="modal_buttons"):
                 yield MyInput(placeholder="Enter new username", id="input")
-                yield Button("Send", id="ok")
+                yield Button("Confirm", id="ok")
+                yield Button("Cancel", id="cancel")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "ok":
             input_widget = self.query_one(MyInput)
             new_username = input_widget.value.strip()
-            
+
+            chat_screen = None
+            for screen in self.app.screen_stack:
+                if isinstance(screen, UserScreen):
+                    chat_screen = screen.query_one(ChatScreen)
+                    break
+
+            if not new_username:
+                if chat_screen:
+                    chat_screen.add_message("Server", "Error: username required")
+                return
+
+            current_username = self.app.server.getUsername()
+            if new_username == current_username:
+                if chat_screen:
+                    chat_screen.add_message(
+                        "Server", "Error: new username matches current username"
+                    )
+                return
+
             data = await self.app.server.set_username(new_username)
-            if data["response_type"] != 20:
-                self.app.sub_title = data["new_username"]
-            else:
-                logging.debug("error changing username")
+            if data.get("error"):
+                if chat_screen:
+                    chat_screen.add_message("Server", f"Error: {data['error']}")
+                return
+
+            self.app.sub_title = new_username
+            if chat_screen:
+                chat_screen.add_message("Server", f"Username changed to {new_username}")
+            self.app.pop_screen()
+        elif event.button.id == "cancel":
             self.app.pop_screen()
             
 class CreateChannelModal(ModalScreen):
@@ -776,6 +805,9 @@ class CreateChannelModal(ModalScreen):
         width: 100%;
         margin-top: 1;
     }
+    #cancel {
+        color: $error;
+    }
     """
 
     def __init__(self, title: str, body: str, chat_name: str, chat_type: str):
@@ -792,17 +824,36 @@ class CreateChannelModal(ModalScreen):
             with Container(id="modal_buttons"):
                 yield MyInput(placeholder="Enter channel name", id="input1")
                 yield MyInput(placeholder="Enter description", id="input2")
-                yield Button("Send", id="ok")
+                yield Button("Confirm", id="ok")
+                yield Button("Cancel", id="cancel")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "ok":
             channel_name = self.query_one("#input1").value.strip()
             description = self.query_one("#input2").value.strip()
-            
-            data = await self.app.server.CHANNEL_CREATE(channel_name,description)
-            if data["response_type"] != 20:
-            
-                self.app.my_created_channels.append(channel_name)
+
+            chat_screen = None
+            for screen in self.app.screen_stack:
+                if isinstance(screen, UserScreen):
+                    chat_screen = screen.query_one(ChatScreen)
+                    break
+
+            if not channel_name:
+                if chat_screen:
+                    chat_screen.add_message("Server", "Error: channel name required")
+                return
+
+            data = await self.app.server.CHANNEL_CREATE(channel_name, description)
+            if data.get("error"):
+                if chat_screen:
+                    chat_screen.add_message("Server", f"Error: {data['error']}")
+                return
+
+            self.app.my_created_channels.append(channel_name)
+            if chat_screen:
+                chat_screen.add_message("Server", f"Channel {channel_name} created")
+            self.app.pop_screen()
+        elif event.button.id == "cancel":
             self.app.pop_screen()
 
 #Adapted NotificationModal
