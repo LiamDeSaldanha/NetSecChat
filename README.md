@@ -39,3 +39,5 @@ python tui.py
 ```
 This runs the terminal user interface (TUI), which is the point of interaction between the user and the server.
 In the TUI, use the /help command for a list of commands. Clicking on a user or channel on the sidebar will open that specific chat, and the sidebar refreshes automatically to show which users and channels are active.
+
+Project completed by Liam De Saldanha, Joshua Diegaardt and Daniel Sardhina.
