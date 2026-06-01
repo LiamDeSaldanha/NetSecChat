@@ -405,7 +405,7 @@ class ChatMessageBar(Widget):
                 if len(parts) > 1:
                     new_username = parts[1]
                     current_username = self.app.server.getUsername()
-                    #check username for clear-text condition when chaning name
+                    #Ai helped check username for clear-text condition when chaning name
                     connection = getattr(self.app.server, "connection", None)
                     if connection and connection.port == 51825 and not new_username.startswith("clear-"):
                         chat.add_message("Server", 'Error: cleartext usernames must start with "clear-"')
@@ -716,7 +716,7 @@ class UsernameModal(ModalScreen):
                 if chat_screen:
                     chat_screen.add_message("Server", "Error: username required")
                 return
-            #check if the user is adhering to the cleartext connection rule of starting their name with "clear-"
+            #Ai helped check if the user is adhering to the cleartext connection rule of starting their name with "clear-"
             connection = getattr(self.app.server, "connection", None)
             if connection and connection.port == 51825 and not new_username.startswith("clear-"):
                 if chat_screen:
