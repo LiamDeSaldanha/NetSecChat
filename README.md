@@ -43,3 +43,6 @@ In the TUI, use the /help command for a list of commands. Clicking on a user or 
 There is a file called main.py that is a CLI version of the application, but this version was mainly used for testing and debugging during encryption and extended encryption. Although included, it is not the most recent version of the application. TUI.py is the version that we recommend you run.
 
 Project completed by Liam De Saldanha, Joshua Diegaardt and Daniel Sardhina.
+
+# Note
+-	When switching chats or performing actions to fast in the tui the application will crash
