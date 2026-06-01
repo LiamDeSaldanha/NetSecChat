@@ -405,8 +405,14 @@ class ChatMessageBar(Widget):
                 if len(parts) > 1:
                     new_username = parts[1]
                     current_username = self.app.server.getUsername()
+                    #check username for clear-text condition when chaning name
+                    connection = getattr(self.app.server, "connection", None)
+                    if connection and connection.port == 51825 and not new_username.startswith("clear-"):
+                        chat.add_message("Server", 'Error: cleartext usernames must start with "clear-"')
+                        return
                     if new_username == current_username:
                         chat.add_message("Server", "Error: new username matches current username")
+                        return
                     else:
                         await self.app.server.set_username(new_username)
                         chat.add_message("Server", f"Username changed to {new_username}")
@@ -710,6 +716,15 @@ class UsernameModal(ModalScreen):
                 if chat_screen:
                     chat_screen.add_message("Server", "Error: username required")
                 return
+            #check if the user is adhering to the cleartext connection rule of starting their name with "clear-"
+            connection = getattr(self.app.server, "connection", None)
+            if connection and connection.port == 51825 and not new_username.startswith("clear-"):
+                if chat_screen:
+                    chat_screen.add_message(
+                        "Server",
+                        'Error: cleartext usernames must start with "clear-"',
+                    )
+                return
 
             current_username = self.app.server.getUsername()
             if new_username == current_username:
@@ -718,7 +733,7 @@ class UsernameModal(ModalScreen):
                         "Server", "Error: new username matches current username"
                     )
                 return
-
+            
             data = await self.app.server.set_username(new_username)
             if data.get("error"):
                 if chat_screen:
@@ -1065,9 +1080,6 @@ class LayoutApp(App):
                     if  self.active_chat == "Server":
                         chat_screen.add_message("Shakespear: ", message)
                     self.app.channel_list[username].append(("Shakespear: ", message))                
-                else:               
-                    if  self.active_chat == username:
-                        self.app.channel_list[username].append((username, message))
         except Exception as e:
             logging.debug(f"UI update error: {e}")
 
