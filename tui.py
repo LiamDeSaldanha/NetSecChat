@@ -1065,9 +1065,7 @@ class LayoutApp(App):
                     if  self.active_chat == "Server":
                         chat_screen.add_message("Shakespear: ", message)
                     self.app.channel_list[username].append(("Shakespear: ", message))                
-                else:               
-                    if  self.active_chat == username:
-                        self.app.channel_list[username].append((username, message))
+                
         except Exception as e:
             logging.debug(f"UI update error: {e}")
 
