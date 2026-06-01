@@ -15,17 +15,17 @@ SERVER_STATIC_PUBLIC_KEY=b'f,^\xc0Cb\xf3\x937\xbf\x11\x14"\xed\x13\x0b\x9f\xe7\x
 
 #################### End of Constants #################
 
-
-
-"""Used to generate secret"""
 def DH(private_key, public_key):
+    """Used to generate secret"""
     return nacl.bindings.crypto_scalarmult(n=private_key, p=public_key)
 
 def DH_Generate():
+    """Generate public-private keypair"""
     private_key = nacl.public.PrivateKey.generate()
     return (bytes(private_key), bytes(private_key.public_key))
 
 def AEAD_encrypt(key, counter, plain_text, auth_text):
+    """Encryption using nonce and authentication text"""
     chacha = ChaCha20Poly1305(key)
     # 'I' is 32-bit unsigned (4 bytes) -> 0
     # 'Q' is 64-bit unsigned (8 bytes) -> counter, '<' ensures Little-Endian
@@ -35,11 +35,13 @@ def AEAD_encrypt(key, counter, plain_text, auth_text):
     
 
 def AEAD_decrypt(key, counter, encrypted_data, auth_text):
+    """Decryption using nonce and authentication text"""
     chacha = ChaCha20Poly1305(key)
     #will be used for conversion from int to byte literal
     counter = struct.pack('<IQ', 0, counter)
     return chacha.decrypt(counter,encrypted_data,auth_text)
 
+#XAEAD encrypt and decrypt used for mac2 calculation
 def XAEAD_decrypt(key, counter, plain_text, auth_text):
     return nacl.bindings.crypto_aead_xchacha20poly1305_ietf_encrypt(
             plain_text, auth_text, counter, key
@@ -51,6 +53,7 @@ def XAEAD_decrypt(key, counter, encrypted_data, auth_text):
     )
 
 def Hash(inp):
+    """Blake2s hash"""
     h = hashlib.blake2s()
     # = input.encode('utf-8')
     h.update(inp)
@@ -59,6 +62,7 @@ def Hash(inp):
     return bytes.fromhex(hash)
 
 def MixHash(input1, input2):
+    """Hash concatenated strings"""
     string =  input1 + input2
     h = hashlib.blake2s()
     h.update(string)
@@ -66,6 +70,7 @@ def MixHash(input1, input2):
     return bytes.fromhex(hash)
 
 def Mac(key, inp):
+    """Mac calculation"""
     h = BLAKE2s.new(key=key, digest_bytes = 16)
     h.update(inp)
     mac_tag = h.digest()
@@ -73,23 +78,26 @@ def Mac(key, inp):
     return bytes.fromhex(mac_tag)
 
 def HMac(key, inp):
+    """Hash-based Mac using Blake2s"""
     h = hmac.new(key=key,msg=inp,digestmod = hashlib.blake2s)
     return h.digest()
 
-"""Key derivation chain 1"""
 def Kdf1(key, message):
+    """Key derivation chain of length 1. HKDF from the WireGuard definitional paper"""
     t_0 = HMac(key, message)
     t_1 = HMac(t_0, b'\x01')
     return (t_1)
-
-"""Key derivation chain 2""" 
+ 
 def Kdf2(key, message):
+    """Key derivation chain of length 2. HKDF from the WireGuard definitional paper"""
     t_0 = HMac(key, message)
+    #chaing from the paper, using the previous HMac and 
     t_1 = HMac(t_0, b'\x01')
     t_2 = HMac(t_0, t_1 + b'\x02')
     return (t_1, t_2)
 
 def Kdf3(key, message):
+    """Key derivation chain of length 3. HKDF from the WireGuard definitional paper"""
     t_0 = HMac(key, message)
     t_1 = HMac(t_0, b'\x01')
     t_2 = HMac(t_0, t_1 + b'\x02')
@@ -106,14 +114,13 @@ def timestamp1():
 def timestamp():
     t = time.time()
     print("t",t)
-    #t = 1744377020.21733
-    #t =1744366282.5143921
-    secs = int(t) + 10 + 2**62
-    nsecs = int((t % 1) * 1e6)
+    secs = int(t) + 10 + 2**62    # TAI64: Unix time + leap offset + 2^62 flag
+    nsecs = int((t % 1) * 1e6)    # fractional seconds → nanoseconds
     timestamp_ret = secs.to_bytes(8,"big")+nsecs.to_bytes(4,"big")
     return timestamp_ret
 
 class Message:
+    """Message class is the structure and content of the handshake for encrypted (standard and mac2) connections"""
     def __init__(self):
         self.message_type = 0
         self.reserved_zero = 0
@@ -125,21 +132,18 @@ class Message:
         self.mac2 = 0
 
 class Initiator:
+    """Initiator class is responsible for initiating the handshake with the server for encrypted connections. It has methods for handling 
+    standard encryption where the mac2 value is 16 0s and a method for calculating the mac2 value when received from the server"""
     def __init__(self,static_public,static_private):
         self.initial_chaining_key = Hash(b'Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s')
-        #print(f"# chain_key = Hash(Construction) {self.chaining_key}")
         self.initial_hash = Hash(self.initial_chaining_key + b'WireGuard v1 zx2c4 Jason@zx2c4.com')
-        #print(f"# hash = Hash(chain_key || Identifier) {self.hash}")
         
         self.initial_hash = Hash(self.initial_hash + SERVER_STATIC_PUBLIC_KEY)
-        #print(f"# hash = Hash(hash || S_R_pub) {self.hash}")
         #set working variables--must be overwritten for threading to work
         self.chaining_key = self.initial_chaining_key
         self.hash = self.initial_hash
         
         self.E_priv_i , self.E_pub_i = DH_Generate()
-        #self.E_priv_i =  b'\xac\x03\x18b0\xc4\xf7\xd4*\xa7-\x81&\xfb\xc7\xb3PG0\xae\xa4y0\x90\xe2\xe4\xe2\xa0g\\\x83\xb6'
-        #self.E_pub_i = b"\xb1\x13\xb4\xd3\x00R'\x8b\x80\xd1\xcc\xc8X\x1bYf(4\xce&\xd0V\xde\x97\xff\xba2$u\x9b\xe3G"
         print(f"(E_I_priv, E_I_pub) = DH-Generate()  ")
         print(f"E_I_priv {self.E_priv_i}")
         print(f"E_I_pub {self.E_pub_i}")
@@ -154,8 +158,8 @@ class Initiator:
         self.last_received_cookie = None
         
     def new_handshake(self):
-        #client_private_key = b'\x99x\x93eP\xdd\xb7h\xd5dJ\xc7\xa5~\x83\xbdX\x04M\xe29\x15\xe2\xf1\xe8\xd8VFk0\xf8\xa1'
-        #server_public_key = b'f,^\xc0Cb\xf3\x937\xbf\x11\x14"\xed\x13\x0b\x9f\xe7\xaf;\x94\xb0p\x13\xe1\x94\xdd\x85\xcf\x01\x0bC'
+        """Initiate handshake with the server for encrypted connections. Standard encryption uses sixteen 0s for mac 2 and 
+        if there is a mac2 value, then it is parsed"""
         self.chaining_key = self.initial_chaining_key
         self.hash = self.initial_hash
 
@@ -207,7 +211,7 @@ class Initiator:
         msg.mac1 = Mac(Hash(b'mac1----' + SERVER_STATIC_PUBLIC_KEY), concat_msg)
         self.last_sent_mac1 = msg.mac1
         msg_beta = msg.message_type + msg.reserved_zero + msg.sender_index.to_bytes(4, 'little') + msg.unencrypted_ephemeral + msg.encrypted_static + msg.encrypted_timestamp + msg.mac1
-
+        #if a cookie was received from the server then use it to calculate the mac2 value
         if self.last_received_cookie == None:
             msg.mac2 = b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
         else:
@@ -242,12 +246,6 @@ class Initiator:
         msg_empty    = raw_response[44:60]
         mac1         = raw_response[60:76]
         mac2         = raw_response[76:92]
-        #E_R_pub      = b'\xe5\xd0!\x98z\x12\xb5\xf8&\x17\xfe\x14K\x9exe(\x1bK\xc2\x8e\x15T\x81\xcc\xbe\xceq$\x82v\x7f'
-        #self.chaining_key = b'\xe0\\UH\\\x12\x9a\xb4\xcc\xd0\r\xa9\xd2\xac\xc7\xb1]ky\xdc\xc2\x18\xb8\x95]NQ\xf9=\xcd\xa5\xc3'
-        #self.hash = b'r\xdb\rg\x14\xa2\xff\x13h\xf8K\x9dL\xec\x81\xbf\xa6Q\x15\xf3\xeb\xd7{\x87\xa5\x8bs\xc8\xb4k\x8e\x1e'
-        #self.E_priv_i= b'\xac\x03\x18b0\xc4\xf7\xd4*\xa7-\x81&\xfb\xc7\xb3PG0\xae\xa4y0\x90\xe2\xe4\xe2\xa0g\\\x83\xb6'
-        #self.E_pub_i = b"\xb1\x13\xb4\xd3\x00R'\x8b\x80\xd1\xcc\xc8X\x1bYf(4\xce&\xd0V\xde\x97\xff\xba2$u\x9b\xe3G"
-        #self.static_private = b'\x99x\x93eP\xdd\xb7h\xd5dJ\xc7\xa5~\x83\xbdX\x04M\xe29\x15\xe2\xf1\xe8\xd8VFk0\xf8\xa1'
         
         print(f"msg_type: {msg_type}")
         print(f"sender (server session ID): {sender}")
@@ -292,6 +290,7 @@ class Initiator:
         print("Handshake successful!")
 
     def process_response_cookie(self, raw_response):
+        """Process and decrypt the cookie received from the server"""
         msg_type     = b'\x03'
         reserved     = raw_response[1:4]
         receiver     = int.from_bytes(raw_response[4:8], 'little')
@@ -302,51 +301,23 @@ class Initiator:
         return self.new_handshake()     
 
     def create_wireguard_transport_message(self,P):
+        """Method to create transport messages by padding them for the wireguard protocol"""
         type = b'\x04'
         P_byte = P#msgpack.packb(P)
-        msg_packet = AEAD_encrypt(self.T_I_send,self.N_I_send,P,b'')
-        
-        msg = (type+b'\x00' * 3+self.server_index.to_bytes(4,"little")+self.N_I_send.to_bytes(8,"little")+msg_packet)
-        
+        msg_packet = AEAD_encrypt(self.T_I_send,self.N_I_send,P,b'')     
+        msg = (type+b'\x00' * 3+self.server_index.to_bytes(4,"little")+self.N_I_send.to_bytes(8,"little")+msg_packet)        
         self.N_I_send+=1
         return msg
+    
     def handle_wireguard_response(self,raw_response):
-        
-        
+        """Method to unpack and decrypt wireguard response messages"""    
         type     = raw_response[0:1]
         reserved     = raw_response[1:4]
         receiver     = int.from_bytes(raw_response[4:8], 'little')
         counter      = int.from_bytes(raw_response[8:16], 'little')
-        packet    = raw_response[16:]
-        
-        
-        
-        
-        
+        packet    = raw_response[16:]       
         plaintext = AEAD_decrypt(self.T_I_recv, counter, packet, b'')
-        self.N_I_recv += 1
-        
-        
+        self.N_I_recv += 1      
         msg =plaintext
         print(f"Received: {msg}")
         return msg
-        
-        
-        
-#I = Initiator(0,0)
-#I.process_response(b'\x02\x00\x00\x00\x15\x0b\xae\xd4)\x89\x000\xb4W\x17\xd2\x8b\x9fJ\xdb\xb5\xd1yq\xdd\xf6C*\x9c\xa5\xb7A\x05\x8e#5H\x12\xf9Z\x95I:@\xbc%\xab\x930\x04\x85_\x93\xb3\x94\xe3e\xad\xbf\xbd^|5\xef\x95f]\xd2\xef\xc3\x12v\xb6\xe4\xd7\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00')
-        
-        
-        
-    
-   
-        
-    
-        
-        
-
-
-
-         
-
-

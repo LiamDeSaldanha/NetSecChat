@@ -48,7 +48,7 @@ class Connection:
         return self.session
     
     async def send(self, data):
-        """"Send method adds the common parts of a message like the request handle and session number to every outgoing message."""
+        """Send method adds the common parts of a message like the request handle and session number to every outgoing message."""
         if data["request_type"] != 1:
             data["session"] = self.session
         data["request_handle"] = random.randint(0, 2**32 - 1)
@@ -72,7 +72,7 @@ class Connection:
         return self.response[data["request_type"]]
      
     async def send_wireguard(self, data):
-        """"Send message using the WireGuard protocol"""
+        """Send message using the WireGuard protocol"""
         new_data = data if isinstance(data, bytes) else msgpack.packb(data)
         print(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
         self.sock.send(new_data)
@@ -91,7 +91,7 @@ class Connection:
         
         
     async def disconnect(self,data):
-        """"Disconnect method disconnects from the server and stops the listener thread for updates"""
+        """Disconnect method disconnects from the server and stops the listener thread for updates"""
         data = await self.send(data)
         if data["response_type"] == 23:
             
@@ -103,7 +103,7 @@ class Connection:
         return data
     
     async def listen(self):
-        """"Listener method keeps listening thread active for server responses"""
+        """Listener method keeps listening thread active for server responses"""
         loop = asyncio.get_event_loop()
         while self.listening:
             try: 
@@ -126,19 +126,13 @@ class Connection:
                 logging.debug(f"focus_input error: {e}") 
     
 class User:
-    """"User class stores user information like name and a list of channels that the user has joined"""
+    """User class stores user information like name and a list of channels that the user has joined"""
     def __init__(self,name):
         self.username = name
         self.my_channels = []
-        pass
-    def channel_msg(self):
-        pass
-    def dm(self):
-        pass
-    def getMyChannels(self):
-        pass
 
 class Manager:
+    """Manager class manages the connection,sends messages and receives and processes responses"""
     def __init__(self):
         self.username = None
         self.channels = []
@@ -146,6 +140,7 @@ class Manager:
         self.on_message_received = None
         
     def setConnectionType(self,type):
+        """setConnectionType creates a particular connection--either cleartext, encrypted or mac2(cookie)"""
         if type == "cleartext":
             self.connection = Connection('csc4026z.link',51825) 
         elif type=="encrypted":
@@ -153,25 +148,22 @@ class Manager:
         elif type == "cookie":
             self.connection = Connection('csc4026z.link', 51821)
         else:
-            print("Error: invalid type")
-        
+            print("Error: invalid type")    
         
     def setUser(self,username):
         self.username = username
+
     def getUsername(self):
-        return self.username
-    
+        return self.username 
        
     def send(self,data):
         return self.connection.send(data)
     def send_wireguard(self,data):
         return self.connection.send_wireguard(data)
-    
-    
-    
+      
     #! Channel Messages
-        """CHANNEL_CREATE """
     async def CHANNEL_CREATE(self,channel_name,description=""):
+        """Create channel message"""
         data= {
             "request_type":4,
             "channel":channel_name,    
@@ -191,7 +183,7 @@ class Manager:
         
         return data
 
-    """CHANNEL_LIST"""
+    """List available channels message"""
     async def CHANNEL_LIST(self,offset=0):
         data= {
             "request_type":5,               # request_type u8
@@ -232,8 +224,8 @@ class Manager:
     
         return channels
         
-    """CHANNEL_INFO"""
     async def CHANNEL_INFO(self,channel):
+        """Message to get channel information"""
         data= {
             "request_type":6,               # request_type u8
         
@@ -250,16 +242,11 @@ class Manager:
             print(f"Channel name: \"{channel_name}\"\nDescription: {description}\nChannel members: {channel_members}")
         else:
             error = data["error"]
-            print(f"Error: \"{error}\"")
-            
-        
-        
-        
-        
+            print(f"Error: \"{error}\"")        
         return data
 
-    """CHANNEL_JOIN"""
     async def CHANNEL_JOIN(self,channel):
+        """Message to join channel"""
         data= {
             "request_type":7,               
             "channel":channel
@@ -273,37 +260,27 @@ class Manager:
         else:
             
             error = data["error"]
-            print(f"Error: \"{error}\"")
-            
-        
-        
-        
-        
-        
+            print(f"Error: \"{error}\"")      
         return data
-    """CHANNEL_LEAVE"""
+    
     async def CHANNEL_LEAVE(self,channel):
+        """Message to leave channel"""
         data= {
             "request_type":8,               # request_type u8
         
             "channel":channel
         }
-        data = await self.connection.send(data)
-        
-        
+        data = await self.connection.send(data)        
         response_type = data["response_type"]
         if response_type ==29:
             print(f"Left \"{channel}\"")
         else:
             error = data["error"]
             print(f"Error: \"{error}\"")
-            
-
         return data
 
-    """CHANNEL_MESSAGE"""
     async def CHANNEL_MESSAGE(self,channel,message):
-        #message = message.encode('utf-8')
+        """Message to send a message to a channel"""
         data= {
             "request_type":9,               # request_type u8
             
@@ -323,13 +300,11 @@ class Manager:
             
         return data
     
-    
     #! Session Messages
     def connect(self):
+        """Message to connect to the server. Depending on the connection type, a specific handshake is initiated, or not in the case of cleartext"""
         print(self.connection.port)
-        if self.connection.port == 51825:
-            
-        
+        if self.connection.port == 51825:      
             data= {
                 "request_type":1
             } 
@@ -345,13 +320,13 @@ class Manager:
                 print(f"Error: \"{error}\"")
             logging.debug(data)    
             return data
-        elif self.connection.port == 51820:
-            
-            
-            
+        #encrypted connection
+        elif self.connection.port == 51820:    
+            #use static private key to initiate secure handshake with server 
+            #load static private key from the .env file       
             load_dotenv()
             my_static_private = os.getenv('my_static_private')
-            my_static_private = base64.b64decode(my_static_private) #b'\x99x\x93eP\xdd\xb7h\xd5dJ\xc7\xa5~\x83\xbdX\x04M\xe29\x15\xe2\xf1\xe8\xd8VFk0\xf8\xa1'
+            my_static_private = base64.b64decode(my_static_private) 
             my_static_public  = bytes(nacl.public.PrivateKey(my_static_private).public_key)
 
             print("my_static_private: ",my_static_private)
@@ -364,9 +339,7 @@ class Manager:
             self.connection.sock.send(binary_msg)
             response = self.connection.sock.recv(1024)
             #response is b\0x2
-            self.connection.initiator.process_response(response)
-        
-            
+            self.connection.initiator.process_response(response)      
             data= {
                 "request_type":1
             } 
@@ -383,11 +356,11 @@ class Manager:
             logging.debug(data)    
                 
             return data
-            
-            
-            
-            
+        
+             #mac2 connection         
         elif self.connection.port == 51821:
+            #use static private key to initiate secure handshake with server 
+            #load static private key from the .env file 
             load_dotenv()
             my_static_private = os.getenv('my_static_private')
             my_static_private = base64.b64decode(my_static_private) #b'\x99x\x93eP\xdd\xb7h\xd5dJ\xc7\xa5~\x83\xbdX\x04M\xe29\x15\xe2\xf1\xe8\xd8VFk0\xf8\xa1'
@@ -404,14 +377,14 @@ class Manager:
             response = self.connection.sock.recv(1024)
             #response is 0x3
                 
-            # Decrypt cookie and generate the new handshake with calculated mac2
+            # decrypt cookie and generate the new handshake with calculated mac2
             new_handshake_data = self.connection.initiator.process_response_cookie(response)
             new_binary_msg = self.serialize_message_1(new_handshake_data)
                 
-            # Send the second attempt
+            # send the second attempt
             self.connection.sock.send(new_binary_msg)
                 
-            # Wait for the final 0x2 response
+            # wait for the final 0x2 response
             final_response = self.connection.sock.recv(1024)
             if final_response[0:1] == b'\x02':
                 self.connection.initiator.process_response(final_response)
@@ -435,11 +408,11 @@ class Manager:
             else:
                 error = data["error"]
                 print(f"Error: \"{error}\"")
-            logging.debug(data)    
-                
+            logging.debug(data)                   
             return data
         
     def serialize_message_1(self,msg_dict):
+        """Construct message for secure handshake"""
         return (
             msg_dict["type"] +
             msg_dict["reserved"] +
@@ -450,7 +423,9 @@ class Manager:
             msg_dict["mac1"] +
             msg_dict["mac2"]
         )      
+    
     async def ping(self):
+        """Message to send pings/heartbeats to the server"""
         data= {
             "request_type":3
             
@@ -467,17 +442,16 @@ class Manager:
         return data
     
     async def start_ping_loop(self):
+        """Start loop for pinging the server and wait for username and channel list updates"""
         while self.connection.listening:
             await self.ping()
             await self.user_list_pro()
             await self.CHANNEL_LIST_PRO()
             await asyncio.sleep(30)
-        print("pinging stopped")
-        
-      
-    
+        print("pinging stopped")   
     
     async def disconnect(self):
+        """Send message to disconnect from server"""
         data= {
             "request_type":2
         } 
@@ -492,32 +466,15 @@ class Manager:
             
         return data
     
-    #! Server unsolicted
-    
-    
-    
-    
-    
+    #! Server unsolicted    
     async def listen(self):
         print(f"{GREEN}listner started {RESET}")
         await self.connection.listen()
         print("listener closed")
-        
-     
-     # Todo not needed    
-        
-        
-    def error(self):
-        pass
-    def server_message(self):
-        pass
-    def server_shutdown(self):
-        pass
-
 
 #! User messages
-
     async def set_username(self,username):
+        """Message to change username"""
         data= {
             "request_type":13,
             "username":username
@@ -534,6 +491,7 @@ class Manager:
         return data
         
     async def user_list(self,channel=None,offset=None):
+        """Message to return a list of active users"""
         data= {
             "request_type":14,
             
@@ -553,6 +511,7 @@ class Manager:
             print(f"Error: \"{error}\"")
             
         return data
+    
     async def user_list_pro(self,channel=None,offset=None):  
         i =0
         data = await self.user_list(channel,offset)
@@ -567,11 +526,11 @@ class Manager:
                 tmp_userlist = data["users"]
                 next_page = data["next_page"]
                 res+=tmp_userlist
-                offset+=20
-
-    
+                offset+=20  
         return res
+    
     async def user_message(self,to_user,message):
+        """Message to send messages to another user (direct messages)"""
         try:
             data= {
                 "request_type":12,
@@ -589,7 +548,9 @@ class Manager:
             return data
         except Exception as e:
                 logging.debug(f"focus_input error: {e}")
+
     async def whoami(self):
+        """Message to return the current username stored by the server"""
         data= {
             "request_type":11,
         } 
@@ -602,7 +563,9 @@ class Manager:
             print(f"Error: \"{error}\"")
             
         return data
+    
     async def whois(self,username):
+        """Return information on another user"""
         data= {
             "request_type":10,
             "username":username
@@ -616,13 +579,12 @@ class Manager:
             print(f"Error: \"{error}\"")
             
         return data
-
-    
-class Message:
-    def __init__(self,data):
-        self.data = data
-    def encrypt(self):
-        pass
+   
+#class Message:
+#    def __init__(self,data):
+#        self.data = data
+#    def encrypt(self):
+#        pass
     
 
         
