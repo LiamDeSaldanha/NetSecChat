@@ -3,7 +3,6 @@ import socket
 import random
 import asyncio
 import time
-#from channel_msg import *
 from encryption import *
 from dotenv import load_dotenv
 import os
@@ -14,8 +13,9 @@ BLUE    = "\033[94m"
 RESET   = "\033[0m"
 import logging
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
-#TODO
+
 class Connection:
+    """Connection class that represents and is responsible for creating a connection with the server"""
     
     def __init__(self,ip,port):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -30,8 +30,10 @@ class Connection:
         
     def connect(self,incoming_data):
         data =  incoming_data
+        #request handle is a random number
         data["request_handle"] = random.randint(0, 2**32 - 1)
         data = msgpack.packb(data)
+        #ports 51820 & 51821 use encryption
         if self.port == 51820 or self.port == 51821:
             data = self.initiator.create_wireguard_transport_message(data)
         self.sock.send(data)
@@ -46,6 +48,7 @@ class Connection:
         return self.session
     
     async def send(self, data):
+        """"Send method adds the common parts of a message like the request handle and session number to every outgoing message."""
         if data["request_type"] != 1:
             data["session"] = self.session
         data["request_handle"] = random.randint(0, 2**32 - 1)
@@ -55,9 +58,7 @@ class Connection:
             
         logging.debug(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
         loop = asyncio.get_event_loop()
-        
-        
-        
+          
         await loop.run_in_executor(None, self.sock.send, new_data)
         
         await asyncio.sleep(2)
@@ -69,12 +70,9 @@ class Connection:
         if self.response[data["request_type"]] == 0:
             return {}
         return self.response[data["request_type"]]
-    
-    
-    
-    
+     
     async def send_wireguard(self, data):
-        
+        """"Send message using the WireGuard protocol"""
         new_data = data if isinstance(data, bytes) else msgpack.packb(data)
         print(f"{BLUE}{time.strftime('%X')} sending: {data}{RESET}")
         self.sock.send(new_data)
@@ -92,8 +90,8 @@ class Connection:
         return response_data
         
         
-    #TODO
     async def disconnect(self,data):
+        """"Disconnect method disconnects from the server and stops the listener thread for updates"""
         data = await self.send(data)
         if data["response_type"] == 23:
             
@@ -103,7 +101,9 @@ class Connection:
         
         
         return data
+    
     async def listen(self):
+        """"Listener method keeps listening thread active for server responses"""
         loop = asyncio.get_event_loop()
         while self.listening:
             try: 
@@ -123,16 +123,10 @@ class Connection:
                 else:
                     logging.debug(f"{RED} Listener callback not set {RESET}")
             except Exception as e:
-                logging.debug(f"focus_input error: {e}")
-                
-    
-    
-            
-                
-        
-    
+                logging.debug(f"focus_input error: {e}") 
     
 class User:
+    """"User class stores user information like name and a list of channels that the user has joined"""
     def __init__(self,name):
         self.username = name
         self.my_channels = []

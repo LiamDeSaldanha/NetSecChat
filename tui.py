@@ -138,6 +138,21 @@ class InfoChannelButon(Button):
                         
         
 
+class UnreadDot(Widget):
+    DEFAULT_CSS = """
+    UnreadDot {
+        width: 1;
+        height: 1;
+        margin-left: 1;
+        background: white;
+        border: round white;
+    }
+    UnreadDot.-hidden {
+        display: none;
+    }
+    """
+
+
 class User(Widget):
     
     DEFAULT_CSS = """
@@ -148,7 +163,15 @@ class User(Widget):
         background: $panel;
         padding: 1;
     }
+    User > Horizontal {
+        height: 1;
+    }
+    User Label {
+        height: 1;
+    }
     """
+    unread = reactive(False)
+
     def __init__(self, label: str,type  :str = user_types[1]):
         super().__init__()
         self.label = label
@@ -156,16 +179,37 @@ class User(Widget):
         
     
     def compose(self):
-        yield Label(self.type+": "+self.label)
+        with Horizontal():
+            yield Label(self.type+": "+self.label)
+            yield UnreadDot()
         if self.type == "Channel":
             yield ChannelButton(user_name=self.label, user_type=self.type)
             yield InfoChannelButon(user_name=self.label)
+
+    def on_mount(self) -> None:
+        self._sync_unread()
+
+    def watch_unread(self, value: bool) -> None:
+        self._sync_unread()
+
+    def set_unread(self, value: bool) -> None:
+        self.unread = value
+
+    def _sync_unread(self) -> None:
+        try:
+            dot = self.query_one(UnreadDot)
+            if self.unread:
+                dot.remove_class("-hidden")
+            else:
+                dot.add_class("-hidden")
+        except Exception as e:
+            logging.debug(f"UI update error: {e}")
     
     async def on_click(self, event) -> None:
         try:
-            if event.control  is not self:
+            if isinstance(event.control, (ChannelButton, InfoChannelButon)):
                 return
-        
+            self.set_unread(False)
             self.app.active_chat =self.label
             chat = self.app.screen.query_one(ChatScreen)
             chat.clear_messages()
@@ -317,6 +361,12 @@ class ChatList(VerticalScroll):
         for user in self.query(User):
             if user.label == username and user.type == type:
                 user.remove()
+
+    def mark_unread(self, username: str, type: str, value: bool) -> None:
+        for user in self.query(User):
+            if user.label == username and user.type == type:
+                user.set_unread(value)
+                return
         
             
 
@@ -1000,6 +1050,7 @@ class LayoutApp(App):
 
     async def open_chat(self, chat_name: str, chat_type: str) -> None: #! broken
         self.active_chat = chat_name
+        self.screen.query_one(ChatList).mark_unread(chat_name, chat_type, False)
         chat = self.screen.query_one(ChatScreen)
         chat.clear_messages()
         chat.add_message("Current chat with", chat_name)
@@ -1102,6 +1153,9 @@ class LayoutApp(App):
                         logging.debug(f"Channel list {self.app.channel_list}")
                         logging.debug(f"User list {self.app.user_list}")
                     else:
+                        self.screen.query_one(ChatList).mark_unread(
+                            username, user_types[2], True
+                        )
                         self.push_screen(NotificationModal(
                             f"Channel message: {username}",
                             f"{channel_user_name}: {message}",
@@ -1120,6 +1174,9 @@ class LayoutApp(App):
                         chat_screen.add_message(username, message)
                         logging.debug(self.app.user_list)
                     else:
+                        self.screen.query_one(ChatList).mark_unread(
+                            username, user_types[1], True
+                        )
                         self.push_screen(NotificationModal(
                             f"New message from {username}",
                             message,
