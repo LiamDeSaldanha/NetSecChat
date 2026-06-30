@@ -46,3 +46,10 @@ Project completed by Liam De Saldanha, Joshua Diegaardt and Daniel Sardhina.
 
 # Note
 -	When switching chats or performing actions to fast in the tui the application will crash
+-	Presisting messages in session across chats
+-	Mac2 implemented 
+
+# Images
+<img width="1872" height="947" alt="image" src="https://github.com/user-attachments/assets/307b8249-5aba-43ea-bf19-b2aa0b4296b9" />
+<img width="1915" height="975" alt="image" src="https://github.com/user-attachments/assets/50c1545c-c59f-4bae-93c5-453079cbec9b" />
+
